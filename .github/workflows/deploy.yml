@@ -1,0 +1,112 @@
+name: Deploy to GCP Cloud Run
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  PROJECT_ID: portfolio-api-505006
+  REGION: us-central1
+  SERVICE_NAME: monolith-api
+
+concurrency:
+  # A superseded deploy is wasted CI minutes and can land out of order.
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run tests
+        run: mvn -B verify
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Authorize Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BRANCH_SLUG=$(echo "${{ github.ref_name }}" | tr '/' '-')
+          REGISTRY_BASE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}"
+          echo "IMAGE_TAG=${REGISTRY_BASE}:${BRANCH_SLUG}-run${{ github.run_number }}-${SHORT_SHA}" >> $GITHUB_ENV
+          echo "LATEST_TAG=${REGISTRY_BASE}:latest" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE_TAG }},${{ env.LATEST_TAG }}
+          # Persist the Maven and layer cache between runs; the dependency layer
+          # dominates build time and rarely changes.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image "${IMAGE_TAG}" \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --cpu=1 \
+            --memory=512Mi \
+            --concurrency=80 \
+            --min-instances=0 \
+            --max-instances=5 \
+            --cpu-boost \
+            --timeout=30s \
+            --set-env-vars="GCP_PROJECT_ID=${{ env.PROJECT_ID }},AUDIT_RETENTION=90d,AUDIT_RATE_LIMIT_PER_MINUTE=120,AUDIT_HASH_CLIENT_IP=false" \
+            --set-secrets="API_KEY=API_KEY:latest,CONTINUUM_API_KEY=CONTINUUM_API_KEY:latest,ALLOWED_EMAIL=ALLOWED_EMAIL:latest,DISCORD_WEBHOOK_URL=DISCORD_WEBHOOK_URL:latest"
+
+      - name: Verify the new revision is serving
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region ${{ env.REGION }} --format='value(status.url)')
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent --show-error --max-time 10 "${URL}/health"; then
+              echo "Health check passed."
+              exit 0
+            fi
+            echo "Attempt ${attempt} failed; retrying in 10s."
+            sleep 10
+          done
+          echo "Deployed revision failed health checks."
+          exit 1

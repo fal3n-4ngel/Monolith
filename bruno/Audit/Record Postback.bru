@@ -1,0 +1,27 @@
+meta {
+  name: Record Postback
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/audit/postback
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "sourceApp": "continuum-home",
+    "eventType": "USER_SESSION_ACTIVE",
+    "severity": "INFO",
+    "userId": "usr_123",
+    "metadata": {
+      "note": "sent from Bruno"
+    }
+  }
+}

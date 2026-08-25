@@ -1,0 +1,93 @@
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  error:
+    # Binding errors are useful to clients; stack traces and internal messages are not.
+    include-message: on_param
+    include-binding-errors: always
+    include-stacktrace: never
+  tomcat:
+    # Caps the work an unauthenticated caller can force per request.
+    max-http-form-post-size: 64KB
+    max-swallow-size: 128KB
+    threads:
+      max: 50
+  max-http-request-header-size: 16KB
+
+spring:
+  application:
+    name: monolith-api
+  lifecycle:
+    # Must stay under the Cloud Run SIGTERM grace period so buffered writes drain.
+    timeout-per-shutdown-phase: 15s
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+  mvc:
+    problemdetails:
+      enabled: true
+  threads:
+    virtual:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      # Health output is public (Cloud Run probes it unauthenticated); do not leak component detail.
+      show-details: never
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: monolith-api
+
+dashboard:
+  api-key: ${API_KEY:}
+  allowed-email: ${ALLOWED_EMAIL:}
+  gcp:
+    project-id: ${GCP_PROJECT_ID:portfolio-api-505006}
+
+continuum:
+  api-key: ${CONTINUUM_API_KEY:}
+
+# Secret. Must be injected from Google Secret Manager; never commit a default here.
+discord:
+  webhook-url: ${DISCORD_WEBHOOK_URL:}
+
+# Audit & telemetry pipeline. See com.dashboard.api.config.AuditProperties.
+audit:
+  authorized-origins: ${AUDIT_AUTHORIZED_ORIGINS:https://continuum-home.vercel.app,https://uat-continuum-home.vercel.app,http://localhost:3000}
+  known-source-apps: ${AUDIT_KNOWN_SOURCE_APPS:continuum-home}
+  max-map-entries: 32
+  max-value-length: 512
+  max-map-depth: 4
+  hash-client-ip: ${AUDIT_HASH_CLIENT_IP:false}
+  retention: ${AUDIT_RETENTION:90d}
+  default-query-limit: 50
+  max-query-limit: 200
+  rate-limit-per-minute: ${AUDIT_RATE_LIMIT_PER_MINUTE:120}
+  alert-cooldown: ${AUDIT_ALERT_COOLDOWN:15m}
+  flush-interval-ms: 5000
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+
+logging:
+  level:
+    com.dashboard.api: ${LOG_LEVEL:INFO}
+    # The Firestore client logs a channel-state line per RPC at INFO, which is pure noise
+    # on Cloud Run and is billed as log ingestion.
+    io.grpc: WARN
+    com.google.cloud.firestore: WARN

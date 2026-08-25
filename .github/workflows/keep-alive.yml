@@ -1,0 +1,23 @@
+name: Cloud Run Keep-Alive Ping
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    name: Ping Cloud Run Service
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Keep-Alive Ping
+        run: |
+          echo "Pinging https://api.adithyakrishnan.com/health..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.adithyakrishnan.com/health)
+          echo "Response Status: HTTP $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "✅ Container is warm and responsive!"
+          else
+            echo "⚠️ Non-200 status code: $HTTP_STATUS"
+          fi

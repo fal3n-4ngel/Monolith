@@ -1,0 +1,41 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!target/classes
+!target/test-classes
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### NetBeans ###
+/nbproject/private/
+/build/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### Logs & GCP Secrets & Local Testing ###
+*.log
+.env
+setup-secrets.ps1
+
+# Blanket-ignore JSON so a service-account key can never be committed by accident,
+# then re-admit the infrastructure config that has to be version-controlled.
+*.json
+!infra/*.json
+service-account.json
+key.json
+

@@ -1,0 +1,18 @@
+meta {
+  name: Query Logs
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/audit/logs?sourceApp=continuum-home&limit=50
+  body: none
+  auth: inherit
+}
+
+params:query {
+  sourceApp: continuum-home
+  limit: 50
+  ~eventType:
+  ~severity:
+}

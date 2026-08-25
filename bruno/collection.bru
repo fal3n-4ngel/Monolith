@@ -1,0 +1,10 @@
+headers {
+  Content-Type: application/json
+}
+
+script:pre-request {
+  const apiKey = bru.getEnvVar('apiKey');
+  if (apiKey) {
+    req.setHeader('Authorization', 'Bearer ' + apiKey.trim());
+  }
+}

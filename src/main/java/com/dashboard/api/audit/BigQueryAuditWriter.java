@@ -2,8 +2,6 @@ package com.dashboard.api.audit;
 
 import com.dashboard.api.config.AuditProperties;
 import com.google.cloud.bigquery.BigQuery;
-import com.google.cloud.bigquery.InsertAllRequest;
-import com.google.cloud.bigquery.InsertAllResponse;
 import com.google.cloud.bigquery.QueryJobConfiguration;
 import com.google.cloud.bigquery.QueryParameterValue;
 import com.google.cloud.bigquery.TableId;
@@ -111,16 +109,9 @@ public class BigQueryAuditWriter {
         }
 
         // insertId = eventId gives best-effort dedup: a retried or keepalive-resent postback
-        // with the same eventId lands once, not twice.
-        InsertAllRequest request = InsertAllRequest.newBuilder(table)
-                .addRow(eventId, row)
-                .build();
-
-        InsertAllResponse response = bigQuery.insertAll(request);
-        if (response.hasErrors()) {
-            response.getInsertErrors().forEach((index, errors) ->
-                    log.error("[BigQueryAudit] Insert error for event [{}], row {}: {}", eventId, index, errors));
-        }
+        // with the same eventId lands once, not twice — which is also what makes the
+        // connection retry inside insertOne safe.
+        BigQueryInserts.insertOne(bigQuery, table, eventId, row);
     }
 
     /** MERGE-based upsert: last-write-wins per (source_app, local_user_id). Never used for matching by name. */

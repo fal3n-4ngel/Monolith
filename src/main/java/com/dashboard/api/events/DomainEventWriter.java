@@ -1,9 +1,8 @@
 package com.dashboard.api.events;
 
+import com.dashboard.api.audit.BigQueryInserts;
 import com.dashboard.api.config.AuditProperties;
 import com.google.cloud.bigquery.BigQuery;
-import com.google.cloud.bigquery.InsertAllRequest;
-import com.google.cloud.bigquery.InsertAllResponse;
 import com.google.cloud.bigquery.TableId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,21 +48,9 @@ public class DomainEventWriter {
         if (bigQuery == null) {
             return;
         }
-        try {
-            InsertAllResponse response = bigQuery.insertAll(
-                    InsertAllRequest.newBuilder(TableId.of(props.bigqueryDomainDataset(), table))
-                            // insertId = eventId: a retried postback lands once, not twice.
-                            .addRow(eventId, row)
-                            .build());
-
-            if (response.hasErrors()) {
-                response.getInsertErrors().forEach((index, errors) ->
-                        log.error("[DomainEvent] Insert error into [{}] for event [{}], row {}: {}",
-                                table, eventId, index, errors));
-            }
-        } catch (RuntimeException e) {
-            log.error("[DomainEvent] Failed to insert event [{}] into [{}]", eventId, table, e);
-        }
+        // insertId = eventId: a retried postback lands once, not twice — which is also what
+        // makes the connection retry inside insertOne safe.
+        BigQueryInserts.insertOne(bigQuery, TableId.of(props.bigqueryDomainDataset(), table), eventId, row);
     }
 
     /** Resolved lazily: the BigQuery bean is {@code @Lazy} so the app boots without credentials. */

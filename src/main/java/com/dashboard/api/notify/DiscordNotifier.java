@@ -17,26 +17,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Posts a one-line "an event landed" message to Discord — purely a visible heartbeat so a
- * deploy can be eyeballed as working in UAT/prod without a BigQuery query. Not an alert
- * pipeline: no severity, no dedup, no rate-limit backoff. If it ever gets noisy, the fix is to
- * stop calling it from the noisy call site, not to add throttling here.
- *
- * <p>Retries once on a connection failure — the same {@code HttpConnectTimeoutException} seen
- * from {@code BigQueryInserts} on a Cloud Run instance's first outbound call to a host it
- * hasn't talked to yet. Safe to retry unconditionally: Discord accepts a duplicate webhook post
- * as a second message, not an error, and a lost "heartbeat" duplicate is harmless either way.
+ * Posts event notification embeds to Discord as a deployment heartbeat.
+ * Operates asynchronously with a 60-second rate-limit backoff circuit breaker.
  */
 @Component
 public class DiscordNotifier {
 
     private static final Logger log = LoggerFactory.getLogger(DiscordNotifier.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    // Deliberately generous. Observed in production: Cloud Run's egress to Discord's
-    // Cloudflare-fronted edge sometimes takes far longer to establish than a normal client on a
-    // normal network — 8s wasn't enough and failed outright. REQUEST_TIMEOUT must exceed
-    // CONNECT_TIMEOUT: it bounds the whole request-response cycle, connect phase included, so a
-    // shorter value can fire first and mask which phase actually timed out.
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(25);
     private static final int MAX_ATTEMPTS = 2;
@@ -52,13 +40,17 @@ public class DiscordNotifier {
         }
     }
 
-    /**
-     * Fire-and-forget: a Discord hiccup must never affect ingest. Runs on its own executor,
-     * not {@code bigqueryExecutor} — a slow BigQuery retry must never delay or starve this.
-     */
+    private volatile long mutedUntilMs = 0;
+
+    /** Fire-and-forget event notification executed on a dedicated thread pool. */
     @Async("discordExecutor")
     public void notifyDomainEvent(String eventType, String sourceApp, String table, String environment, String eventId) {
         if (webhookUrl.isBlank()) {
+            return;
+        }
+
+        if (System.currentTimeMillis() < mutedUntilMs) {
+            log.debug("[Discord] Notification skipped for {} — rate-limit circuit breaker active.", eventType);
             return;
         }
 
@@ -75,10 +67,16 @@ public class DiscordNotifier {
                 HttpResponse<Void> response = http.send(request, HttpResponse.BodyHandlers.discarding());
                 if (response.statusCode() >= 200 && response.statusCode() < 300) {
                     log.info("[Discord] Notified {} (attempt {})", eventType, attempt);
+                    return;
+                } else if (response.statusCode() == 429) {
+                    // Discord rate-limited: mute for 60 seconds to avoid wasting connection slots
+                    mutedUntilMs = System.currentTimeMillis() + 60_000;
+                    log.warn("[Discord] Webhook rate-limited (429) for {}; muting for 60s", eventType);
+                    return;
                 } else {
                     log.warn("[Discord] Webhook returned {} for {}", response.statusCode(), eventType);
+                    return;
                 }
-                return;
             } catch (Exception e) {
                 if (attempt < MAX_ATTEMPTS) {
                     log.warn("[Discord] Send failed for {} ({}); retrying", eventType, e.getMessage());

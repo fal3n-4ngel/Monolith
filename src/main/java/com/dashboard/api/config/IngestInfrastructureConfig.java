@@ -10,8 +10,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
- * Async wiring for the ingest pipeline — keeps BigQuery writes off the request thread, the
- * single biggest availability risk in a Cloud Run service billed by CPU-second.
+ * Async thread pool configuration for BigQuery ingest and Discord notifications.
  */
 @Configuration
 @EnableAsync
@@ -32,13 +31,7 @@ public class IngestInfrastructureConfig {
         return executor;
     }
 
-    /**
-     * Separate from {@link #bigqueryExecutor()} on purpose — observed in production: the
-     * BigQuery client's own internal retry/backoff can run well past a minute on a bad
-     * connection, and with corePoolSize(1) on a bounded queue that holds the single worker
-     * thread the whole time. Sharing a pool meant a slow BigQuery insert could silently delay
-     * a Discord notification by minutes. The notifier needs to fail fast and independently.
-     */
+    /** Dedicated thread pool for Discord webhooks to prevent pool contention with BigQuery. */
     @Bean("discordExecutor")
     TaskExecutor discordExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

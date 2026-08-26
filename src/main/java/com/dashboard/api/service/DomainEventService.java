@@ -8,6 +8,8 @@ import com.dashboard.api.dto.DomainEventResponse;
 import com.dashboard.api.events.DomainEventType;
 import com.dashboard.api.events.DomainEventWriter;
 import com.dashboard.api.notify.DiscordNotifier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -19,6 +21,8 @@ import java.util.UUID;
 /** Ingest path for domain events — application history, one row per state change. */
 @Service
 public class DomainEventService {
+
+    private static final Logger log = LoggerFactory.getLogger(DomainEventService.class);
 
     private final DomainEventWriter writer;
     private final PayloadSanitizer sanitizer;
@@ -33,6 +37,7 @@ public class DomainEventService {
     public DomainEventResponse record(DomainEventDto dto) {
         Optional<DomainEventType> resolved = DomainEventType.parse(dto.getEventType());
         if (resolved.isEmpty()) {
+            log.warn("[Event] REJECTED eventType={} source={}", dto.getEventType(), dto.getSourceApp());
             return DomainEventResponse.rejected(dto.getEventType(), "unknown_event_type");
         }
         DomainEventType type = resolved.get();
@@ -43,6 +48,8 @@ public class DomainEventService {
         Instant receivedAt = Instant.now();
         long occurredAt = EventClock.resolve(dto.getTimestamp(), receivedAt);
         String table = type.tableFor(dto.getSourceApp());
+
+        log.info("[Event] ACCEPTED eventType={} eventId={} source={} table={}", type.name(), eventId, dto.getSourceApp(), table);
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("event_id", eventId);

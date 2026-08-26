@@ -12,16 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 /**
- * Single-row streaming insert with a retry, shared by the audit and domain-event writers.
- *
- * <p>Exists because of a failure seen in production: Cloud Run idles, the BigQuery client's
- * pooled HTTPS connection dies silently, and the next insert fails with
- * {@code SocketException: Broken pipe} before a byte reaches BigQuery. A second attempt on a
- * fresh connection succeeds.
- *
- * <p>Retrying is only safe because every row carries an {@code insertId} — BigQuery dedupes on
- * it, so a retry after an ambiguous failure can't produce a duplicate. Row-level rejections
- * (schema/data problems) are <i>not</i> retried: a second identical attempt fails identically.
+ * BigQuery streaming insert helper with retry logic and deduplication support via insertId.
  */
 public final class BigQueryInserts {
 
@@ -33,13 +24,7 @@ public final class BigQueryInserts {
     private BigQueryInserts() {
     }
 
-    /**
-     * Serializes a value for a BigQuery {@code JSON} column. The streaming API rejects a raw
-     * nested map there — {@code "This field: <name> is not a record"} — since it reads the
-     * nesting as a STRUCT. JSON columns need a serialized string.
-     *
-     * @return the JSON text, or {@code null} for a null/empty value or an unserializable one.
-     */
+    /** Serializes a Map/object into JSON string for BigQuery JSON column ingestion. */
     public static String toJsonColumn(Object value) {
         if (value == null || (value instanceof Map<?, ?> map && map.isEmpty())) {
             return null;

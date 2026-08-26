@@ -32,8 +32,13 @@ public class DiscordNotifier {
 
     private static final Logger log = LoggerFactory.getLogger(DiscordNotifier.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(8);
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
+    // Deliberately generous. Observed in production: Cloud Run's egress to Discord's
+    // Cloudflare-fronted edge sometimes takes far longer to establish than a normal client on a
+    // normal network — 8s wasn't enough and failed outright. REQUEST_TIMEOUT must exceed
+    // CONNECT_TIMEOUT: it bounds the whole request-response cycle, connect phase included, so a
+    // shorter value can fire first and mask which phase actually timed out.
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(25);
     private static final int MAX_ATTEMPTS = 2;
     private static final int COLOR_GREEN = 0x22C55E;
 

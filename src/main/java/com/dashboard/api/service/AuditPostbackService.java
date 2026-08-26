@@ -2,6 +2,7 @@ package com.dashboard.api.service;
 
 import com.dashboard.api.audit.AuditLogWriter;
 import com.dashboard.api.audit.BigQueryAuditWriter;
+import com.dashboard.api.audit.EventClock;
 import com.dashboard.api.audit.OriginValidator;
 import com.dashboard.api.audit.PayloadSanitizer;
 import com.dashboard.api.audit.Severity;
@@ -14,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,9 +32,6 @@ import java.util.UUID;
 public class AuditPostbackService {
 
     private static final Logger log = LoggerFactory.getLogger(AuditPostbackService.class);
-
-    /** How far a client-supplied timestamp may drift before we distrust it and stamp server time. */
-    private static final Duration MAX_CLOCK_DRIFT = Duration.ofHours(24);
 
     private final AuditLogWriter writer;
     private final BigQueryAuditWriter bigQueryWriter;
@@ -65,7 +62,7 @@ public class AuditPostbackService {
     public AuditPostbackResponse record(AuditPostbackDto dto, RequestContext request) {
         String logId = UUID.randomUUID().toString();
         Instant receivedAt = Instant.now();
-        long eventTimestamp = resolveTimestamp(dto.getTimestamp(), receivedAt);
+        long eventTimestamp = EventClock.resolve(dto.getTimestamp(), receivedAt);
         Severity severity = Severity.parse(dto.getSeverity());
 
         Map<String, Object> context = sanitizer.sanitize(dto.getContext());
@@ -155,16 +152,4 @@ public class AuditPostbackService {
         }
     }
 
-    /**
-     * A caller-supplied timestamp orders the log, so a wild value (clock skew, or a forged
-     * far-future value) would corrupt every {@code orderBy} query. Outside a sane window we
-     * fall back to server time.
-     */
-    private static long resolveTimestamp(Long claimed, Instant receivedAt) {
-        if (claimed == null || claimed <= 0) {
-            return receivedAt.toEpochMilli();
-        }
-        long drift = Math.abs(claimed - receivedAt.toEpochMilli());
-        return drift > MAX_CLOCK_DRIFT.toMillis() ? receivedAt.toEpochMilli() : claimed;
-    }
 }

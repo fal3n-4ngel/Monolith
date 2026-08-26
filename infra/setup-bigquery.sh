@@ -17,10 +17,16 @@ set -uo pipefail
 PROJECT="${1:-portfolio-api-505006}"
 LOCATION="${2:-US}"
 DATASET="audit"
+EVENTS_DATASET="events"
 
-echo "==> Project:  ${PROJECT}"
-echo "==> Location: ${LOCATION}"
-echo "==> Dataset:  ${DATASET}"
+# Domain tables are created per (app, domain). Add an app here and re-run to onboard it;
+# the event->table routing itself lives in DomainEventType, which is the allowlist.
+APPS=("continuum_home")
+DOMAINS=("expenses" "watchlist" "investments" "subscriptions")
+
+echo "==> Project:   ${PROJECT}"
+echo "==> Location:  ${LOCATION}"
+echo "==> Datasets:  ${DATASET} (audit), ${EVENTS_DATASET} (domain events)"
 echo
 
 run_step() {
@@ -32,7 +38,9 @@ run_step() {
   local output
   if output=$("$@" 2>&1); then
     echo "done"
-  elif grep -qi "already exists" <<<"${output}"; then
+  # bq hard-wraps its error text, so "already\n  exists" is a real shape here —
+  # collapse whitespace before matching or a re-run reports a false failure.
+  elif tr -s '[:space:]' ' ' <<<"${output}" | grep -qi "already exists"; then
     echo "exists"
   else
     echo "FAILED"
@@ -45,9 +53,11 @@ run_step() {
 # 1. Dataset
 # ---------------------------------------------------------------------------
 
-echo "==> Dataset"
+echo "==> Datasets"
 run_step "${DATASET}" \
   bq mk --project_id="${PROJECT}" --dataset --location="${LOCATION}" "${PROJECT}:${DATASET}"
+run_step "${EVENTS_DATASET}" \
+  bq mk --project_id="${PROJECT}" --dataset --location="${LOCATION}" "${PROJECT}:${EVENTS_DATASET}"
 echo
 
 # ---------------------------------------------------------------------------
@@ -96,7 +106,9 @@ echo
 
 IDENTITIES_SQL="SELECT
   email,
-  ANY_VALUE(display_name IGNORE NULLS) AS display_name,
+  -- MAX rather than ANY_VALUE: BigQuery rejects IGNORE NULLS on ANY_VALUE, and MAX
+  -- skips NULLs natively, so a user seen once without a name still resolves to one.
+  MAX(display_name) AS display_name,
   ARRAY_AGG(STRUCT(source_app, local_user_id, first_seen, last_seen) ORDER BY last_seen DESC) AS linked_accounts,
   COUNT(DISTINCT source_app) AS app_count,
   MIN(first_seen) AS first_seen,
@@ -110,15 +122,84 @@ run_step "identities" \
     --view="${IDENTITIES_SQL}" "${PROJECT}:${DATASET}.identities"
 echo
 
+# ---------------------------------------------------------------------------
+# 5. Domain event tables — one per (app, domain), all sharing one column set.
+#
+# The shared columns are the point. source_app + local_user_id appear in every
+# domain table, so joining any of them to identity_links is always the same shape:
+# adding a fifth domain, or a second app, never invents a new join pattern.
+# ---------------------------------------------------------------------------
+
+DOMAIN_SCHEMA="event_id:STRING,source_app:STRING,local_user_id:STRING,event_type:STRING,\
+action:STRING,entity_id:STRING,item_count:INT64,occurred_at:TIMESTAMP,\
+received_at:TIMESTAMP,payload:JSON"
+
+echo "==> Domain event tables"
+for app in "${APPS[@]}"; do
+  for domain in "${DOMAINS[@]}"; do
+    run_step "${app}_${domain}" \
+      bq mk --project_id="${PROJECT}" --table \
+        --time_partitioning_field=occurred_at --time_partitioning_type=DAY \
+        --clustering_fields=local_user_id,event_type \
+        "${PROJECT}:${EVENTS_DATASET}.${app}_${domain}" "${DOMAIN_SCHEMA}"
+  done
+done
+echo
+
+# ---------------------------------------------------------------------------
+# 6. user_activity view — every domain event from every app in one stream, resolved
+#    to a person via the shared (source_app, local_user_id) key.
+#
+# This is the payoff of the uniform column set: onboarding a new domain or app means
+# adding one more UNION ALL branch here, not designing a new join.
+# ---------------------------------------------------------------------------
+
+ACTIVITY_BRANCHES=""
+for app in "${APPS[@]}"; do
+  for domain in "${DOMAINS[@]}"; do
+    [ -n "${ACTIVITY_BRANCHES}" ] && ACTIVITY_BRANCHES="${ACTIVITY_BRANCHES}
+  UNION ALL"
+    ACTIVITY_BRANCHES="${ACTIVITY_BRANCHES}
+  SELECT '${domain}' AS domain, * FROM \`${PROJECT}.${EVENTS_DATASET}.${app}_${domain}\`"
+  done
+done
+
+ACTIVITY_SQL="WITH all_events AS (${ACTIVITY_BRANCHES}
+)
+SELECT
+  i.email,
+  e.domain,
+  e.source_app,
+  e.event_type,
+  e.action,
+  e.entity_id,
+  e.item_count,
+  e.occurred_at,
+  e.payload
+FROM all_events e
+LEFT JOIN \`${PROJECT}.${DATASET}.identity_links\` i
+  ON i.source_app = e.source_app AND i.local_user_id = e.local_user_id"
+
+echo "==> Cross-app activity view"
+run_step "user_activity" \
+  bq mk --project_id="${PROJECT}" --use_legacy_sql=false \
+    --view="${ACTIVITY_SQL}" "${PROJECT}:${EVENTS_DATASET}.user_activity"
+echo
+
 cat <<EOF
 ==> Done. Verify with:
 
   bq ls --project_id=${PROJECT} ${DATASET}
+  bq ls --project_id=${PROJECT} ${EVENTS_DATASET}
   bq show --project_id=${PROJECT} ${DATASET}.audit_events
-  bq show --project_id=${PROJECT} ${DATASET}.identity_links
+  bq show --project_id=${PROJECT} ${EVENTS_DATASET}.continuum_home_expenses
   bq query --project_id=${PROJECT} --use_legacy_sql=false 'SELECT * FROM \`${PROJECT}.${DATASET}.identities\` LIMIT 10'
+  bq query --project_id=${PROJECT} --use_legacy_sql=false 'SELECT * FROM \`${PROJECT}.${EVENTS_DATASET}.user_activity\` ORDER BY occurred_at DESC LIMIT 10'
 
 Until a second sourceApp starts posting events with metadata.email, identity_links will
 have exactly one row per Continuum user and identities.app_count will always read 1 —
 that's expected, not a sign of a broken pipeline.
+
+To onboard a new app: add its normalized name to APPS above, re-run this script, and add
+its event types to DomainEventType. To add a domain: add it to DOMAINS and to that enum.
 EOF

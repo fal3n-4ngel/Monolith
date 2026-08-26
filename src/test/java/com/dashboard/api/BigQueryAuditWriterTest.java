@@ -40,7 +40,7 @@ class BigQueryAuditWriterTest {
                 Set.of("https://continuum-home.vercel.app"), Set.of("continuum-home"),
                 32, 512, 4, false,
                 Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15),
-                bigqueryEnabled, "audit", "US");
+                bigqueryEnabled, "audit", "events", "US");
     }
 
     private static Map<String, Object> baseDocument() {

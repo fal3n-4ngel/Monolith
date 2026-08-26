@@ -62,6 +62,13 @@ public record AuditProperties(
 
         @DefaultValue("audit") String bigqueryDataset,
 
+        /**
+         * Dataset for domain events (per-app, per-domain tables). Kept apart from
+         * {@link #bigqueryDataset()}: audit records are security facts with a retention policy,
+         * domain events are application history. Same location, so cross-dataset joins work.
+         */
+        @DefaultValue("events") String bigqueryDomainDataset,
+
         /** Dataset location. Must match at dataset-creation time; changing it later requires a new dataset. */
         @DefaultValue("US") String bigqueryLocation
 ) {

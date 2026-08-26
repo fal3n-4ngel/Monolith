@@ -17,7 +17,7 @@ class OriginValidatorTest {
             Set.of("continuum-home"),
             32, 512, 4, false,
             Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15),
-            false, "audit", "US"));
+            false, "audit", "events", "US"));
 
     @Test
     void authorizedOriginHeaderIsNotFlagged() {

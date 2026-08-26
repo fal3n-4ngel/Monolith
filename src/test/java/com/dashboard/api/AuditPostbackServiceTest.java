@@ -32,7 +32,7 @@ class AuditPostbackServiceTest {
             Set.of("https://continuum-home.vercel.app"), Set.of("continuum-home"),
             32, 512, 4, false,
             Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15),
-            false, "audit", "US");
+            false, "audit", "events", "US");
 
     private AuditLogWriter writer;
     private BigQueryAuditWriter bigQueryWriter;

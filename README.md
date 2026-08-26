@@ -13,7 +13,8 @@ the caller is who it claims to be, and persist a bounded record cheaply.
 
 | Method | Path | Auth | Notes |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/v1/audit/postback` | none | Ingest. Rate limited per IP. Returns `202 Accepted`. |
+| `POST` | `/api/v1/audit/postback` | none | Audit ingest. Rate limited per IP. Returns `202 Accepted`. |
+| `POST` | `/api/v1/events/postback` | **bearer** | Domain-event ingest. Rate limited per IP. Returns `202 Accepted`. |
 | `GET`  | `/api/v1/audit/logs` | bearer | Query the audit trail. |
 | `GET`  | `/health`, `/` | none | Liveness. Touches no backend. |
 | `GET`  | `/swagger-ui.html` | none | Interactive API docs. |
@@ -75,7 +76,7 @@ tunable without a code change.
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
 | `API_KEY` | — | Static bearer key for the query endpoint. **Required.** |
-| `CONTINUUM_API_KEY` | — | Second accepted key, for rotation without downtime. |
+| `CONTINUUM_API_KEY` | — | The key Continuum presents for domain events. Also a second accepted key for rotating `API_KEY` without downtime. |
 | `ALLOWED_EMAIL` | — | The only Google identity accepted for OAuth auth. |
 | `DISCORD_WEBHOOK_URL` | — | Security alert destination. Alerts are logged only if unset. |
 | `GCP_PROJECT_ID` | `portfolio-api-505006` | Firestore project. |
@@ -87,6 +88,7 @@ tunable without a code change.
 | `AUDIT_HASH_CLIENT_IP` | `false` | Store a SHA-256 pseudonym instead of the raw IP. |
 | `AUDIT_BIGQUERY_ENABLED` | `true` | Escape hatch to disable BigQuery writes without a redeploy. |
 | `AUDIT_BIGQUERY_DATASET` | `audit` | BigQuery dataset for `audit_events` / `identity_links`. |
+| `AUDIT_BIGQUERY_DOMAIN_DATASET` | `events` | BigQuery dataset for per-app domain-event tables. |
 | `AUDIT_BIGQUERY_LOCATION` | `US` | Dataset location. Fixed at creation time — see BigQuery setup below. |
 
 **No secret has a default in `application.yml`.** A missing `API_KEY` makes the service reject
@@ -158,6 +160,71 @@ lands once instead of twice.
 
 ---
 
+## Domain events
+
+Audit events are security facts about sessions and access. **Domain events** are application
+history — an expense created, a watchlist item removed — and are a deliberately separate
+pipeline, not more `eventType` values on the audit one.
+
+Three things differ, and each is the reason for the split:
+
+| | Audit postback | Domain event |
+| :--- | :--- | :--- |
+| Auth | none (a browser must be able to call it) | **bearer key required** |
+| Emitted by | browser *and* server | source app's **server only** |
+| Retention | 90d TTL | indefinite |
+
+The authentication difference is the important one. A domain event is only ever emitted by a
+source app's own backend after a write has already committed, so the endpoint can demand a
+credential — and does. Without that, anyone who found the URL could fabricate an expense record
+in the analytics store. Continuum only sends these when `MONOLITH_API_KEY` is set; unset means
+the events are skipped rather than sent unauthenticated.
+
+### Callers name an event, never a table
+
+The destination is resolved server-side from `eventType` by `DomainEventType`, which is both
+the allowlist and the routing table. `EXPENSE_CREATED` from `continuum-home` lands in
+`events.continuum_home_expenses`.
+
+Letting the client name its own table was the obvious alternative and is worse: table
+identifiers can't be parameterized the way values can, so a caller-supplied destination becomes
+a hand-rolled validation problem — and schema ownership drifts to whoever is calling the
+endpoint. Routing here costs one enum entry per event and keeps that decision in this repo. An
+`eventType` outside the allowlist returns `400 REJECTED` and stores nothing, so a client typo
+surfaces immediately instead of quietly becoming a gap.
+
+### One column set across every table
+
+Every domain table — for every app, every domain — has the same columns: `event_id`,
+`source_app`, `local_user_id`, `event_type`, `action`, `entity_id`, `item_count`, `occurred_at`,
+`received_at`, `payload`.
+
+That uniformity is what makes cross-app querying tractable. Because `source_app` +
+`local_user_id` appear everywhere, joining any domain table to `identity_links` is always the
+same shape, and `events.user_activity` unions all of them into one person-resolved stream:
+
+```sql
+SELECT email, domain, event_type, occurred_at
+FROM `portfolio-api-505006.events.user_activity`
+WHERE email = 'someone@example.com'
+ORDER BY occurred_at DESC
+```
+
+Adding a domain or onboarding an app adds a `UNION ALL` branch, never a new join pattern.
+
+### Batching
+
+Batch operations emit **one** event carrying `itemCount`, not one per row. A 200-row CSV import
+sending 200 postbacks would exhaust `AUDIT_RATE_LIMIT_PER_MINUTE` and add no information.
+
+### Payloads keep structure, not content
+
+Continuum sends amounts, categories, and dates — not expense titles or notes. Free-text personal
+content stays in Firestore, encrypted. `PayloadSanitizer` then bounds and redacts whatever does
+arrive, the same as for audit metadata.
+
+---
+
 ## Cost model
 
 The service sits in the Cloud Run and Firestore free tiers under normal personal use. The
@@ -214,3 +281,16 @@ printf 'value' | gcloud secrets create API_KEY --data-file=- --project=portfolio
 ```
 
 Repeat for `CONTINUUM_API_KEY`, `ALLOWED_EMAIL`, and `DISCORD_WEBHOOK_URL`.
+
+`API_KEY` and `CONTINUUM_API_KEY` are both wired into the service via `--set-secrets`. Give
+Continuum the **`CONTINUUM_API_KEY`** value (as `MONOLITH_API_KEY` in its environment), not
+`API_KEY` — so the credential sitting in Vercel can be rotated without touching the one used to
+query `/api/v1/audit/logs`:
+
+```bash
+gcloud secrets versions access latest --secret=CONTINUUM_API_KEY --project=portfolio-api-505006
+```
+
+Note that `ApiKeyAuthFilter` currently treats both keys identically — same authority on every
+authenticated endpoint. Separate keys buy independent rotation and attribution, **not** privilege
+separation. Scoping Continuum to events-only would need per-key authorities in that filter.

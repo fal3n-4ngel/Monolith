@@ -17,9 +17,9 @@ import java.util.Map;
  *
  * <p>Every table this writes to shares one column set — {@code source_app}, {@code local_user_id},
  * {@code event_type}, {@code action}, {@code entity_id}, {@code item_count}, {@code occurred_at},
- * {@code received_at}, {@code payload}. That uniformity is the whole point: joining any domain
- * table to {@code identity_links} is always the same shape regardless of which domain you start
- * from, so adding a fifth table (or a second app) never invents a new join.
+ * {@code received_at}, {@code payload}. That uniformity is the whole point: {@code all_events}
+ * unions every domain table into one query shape regardless of which domain you start from, so
+ * adding a fifth table (or a second app) never invents a new join.
  */
 @Component
 public class DomainEventWriter {

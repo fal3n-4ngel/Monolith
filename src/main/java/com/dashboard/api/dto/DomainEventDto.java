@@ -36,8 +36,7 @@ public class DomainEventDto {
     @Size(max = 128, message = "eventId must be at most 128 characters")
     private String eventId;
 
-    @Schema(description = "The acting user's ID as known to the source app. Joined to identity_links "
-            + "on (source_app, local_user_id) to resolve the same person across applications.",
+    @Schema(description = "The acting user's ID as known to the source app.",
             example = "firebase-uid-123")
     @NotBlank(message = "userId is required")
     @Size(max = 128, message = "userId must be at most 128 characters")

@@ -47,8 +47,11 @@ public class DiscordNotifier {
         }
     }
 
-    /** Fire-and-forget: a Discord hiccup must never affect ingest. */
-    @Async("bigqueryExecutor")
+    /**
+     * Fire-and-forget: a Discord hiccup must never affect ingest. Runs on its own executor,
+     * not {@code bigqueryExecutor} — a slow BigQuery retry must never delay or starve this.
+     */
+    @Async("discordExecutor")
     public void notifyDomainEvent(String eventType, String sourceApp, String table, String environment, String eventId) {
         if (webhookUrl.isBlank()) {
             return;

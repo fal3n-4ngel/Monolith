@@ -31,4 +31,25 @@ public class IngestInfrastructureConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * Separate from {@link #bigqueryExecutor()} on purpose — observed in production: the
+     * BigQuery client's own internal retry/backoff can run well past a minute on a bad
+     * connection, and with corePoolSize(1) on a bounded queue that holds the single worker
+     * thread the whole time. Sharing a pool meant a slow BigQuery insert could silently delay
+     * a Discord notification by minutes. The notifier needs to fail fast and independently.
+     */
+    @Bean("discordExecutor")
+    TaskExecutor discordExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(50);
+        executor.setThreadNamePrefix("ingest-discord-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(10);
+        executor.initialize();
+        return executor;
+    }
 }

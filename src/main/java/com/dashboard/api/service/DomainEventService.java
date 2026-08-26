@@ -49,7 +49,13 @@ public class DomainEventService {
         long occurredAt = EventClock.resolve(dto.getTimestamp(), receivedAt);
         String table = type.tableFor(dto.getSourceApp());
 
-        log.info("[Event] ACCEPTED eventType={} eventId={} source={} table={}", type.name(), eventId, dto.getSourceApp(), table);
+        Map<String, Object> sanitizedPayload = sanitizer.sanitize(dto.getPayload());
+        Object environment = sanitizedPayload.get("environment");
+        String envStr = environment == null ? null : environment.toString();
+        boolean isTest = envStr == null || !"production".equalsIgnoreCase(envStr.trim());
+        String logTag = isTest ? "[Event:TEST]" : "[Event]";
+
+        log.info("{} ACCEPTED eventType={} eventId={} source={} env={} table={}", logTag, type.name(), eventId, dto.getSourceApp(), envStr == null ? "unknown" : envStr, table);
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("event_id", eventId);
@@ -62,10 +68,6 @@ public class DomainEventService {
         row.put("occurred_at", Instant.ofEpochMilli(occurredAt).toString());
         row.put("received_at", receivedAt.toString());
 
-        Map<String, Object> sanitizedPayload = sanitizer.sanitize(dto.getPayload());
-
-        // payload is a BigQuery JSON column: it takes serialized JSON text over the streaming
-        // API, not a nested map (which is read as a STRUCT and rejects the row).
         String payload = BigQueryInserts.toJsonColumn(sanitizedPayload);
         if (payload != null) {
             row.put("payload", payload);
@@ -73,9 +75,7 @@ public class DomainEventService {
 
         writer.write(table, eventId, row);
 
-        Object environment = sanitizedPayload.get("environment");
-        discord.notifyDomainEvent(type.name(), dto.getSourceApp(), table,
-                environment == null ? null : environment.toString(), eventId);
+        discord.notifyDomainEvent(type.name(), dto.getSourceApp(), table, envStr, eventId);
 
         return new DomainEventResponse("ACCEPTED", eventId, type.name(), table, occurredAt, null);
     }

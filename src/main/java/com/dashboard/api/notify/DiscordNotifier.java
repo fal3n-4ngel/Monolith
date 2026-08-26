@@ -29,6 +29,7 @@ public class DiscordNotifier {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(25);
     private static final int MAX_ATTEMPTS = 2;
     private static final int COLOR_GREEN = 0x22C55E;
+    private static final int COLOR_MUTED_GRAY = 0x6B7280;
 
     private final String webhookUrl;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build();
@@ -89,13 +90,19 @@ public class DiscordNotifier {
 
     private HttpRequest buildRequest(String eventType, String sourceApp, String table, String environment, String eventId)
             throws Exception {
+        boolean isTest = environment == null || !"production".equalsIgnoreCase(environment.trim());
+        int color = isTest ? COLOR_MUTED_GRAY : COLOR_GREEN;
+        String title = (isTest ? "🧪 [TEST] " : "📥 ") + eventType;
+        String statusText = isTest ? "TEST / NON-PROD" : "PRODUCTION";
+
         Map<String, Object> embed = Map.of(
-                "title", "📥 " + eventType,
-                "color", COLOR_GREEN,
+                "title", title,
+                "color", color,
                 "timestamp", Instant.now().toString(),
                 "fields", List.of(
                         field("Source", sourceApp, true),
                         field("Environment", environment == null ? "unknown" : environment, true),
+                        field("Status", statusText, true),
                         field("Table", table, true),
                         field("Event ID", eventId, false)));
 

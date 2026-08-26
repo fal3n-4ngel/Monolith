@@ -175,7 +175,7 @@ pipeline, not more `eventType` values on the audit one.
 
 Three things differ, and each is the reason for the split:
 
-| | Audit postback | Domain event |
+| | Audit event | Domain event |
 | :--- | :--- | :--- |
 | Auth | none (a browser must be able to call it) | **bearer key required** |
 | Emitted by | browser *and* server | source app's **server only** |

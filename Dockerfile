@@ -37,7 +37,7 @@ RUN java -XX:ArchiveClassesAtExit=./app.jsa -Dspring.context.exit=onRefresh -jar
 # ---------------------------------------------------------------------------
 # Stage 3 — runtime
 #
-# Must stay glibc-based, not Alpine/musl: google-cloud-firestore pulls in
+# Must stay glibc-based, not Alpine/musl: google-cloud-bigquery pulls in
 # grpc-netty-shaded, which bundles a native BoringSSL/Netty library compiled
 # against glibc. On musl the JVM aborts with SIGABRT before it binds the port.
 # ---------------------------------------------------------------------------

@@ -61,20 +61,14 @@ continuum:
 discord:
   webhook-url: ${DISCORD_WEBHOOK_URL:}
 
-# Audit & telemetry pipeline. See com.dashboard.api.config.AuditProperties.
+# Ingest pipeline. See com.dashboard.api.config.AuditProperties. bigquery-* fields have no
+# entry here — they bind by relaxed env-var matching (AUDIT_BIGQUERY_ENABLED, etc.) straight
+# to their @DefaultValue when unset, same as if they were listed.
 audit:
-  authorized-origins: ${AUDIT_AUTHORIZED_ORIGINS:https://continuum-home.vercel.app,https://uat-continuum-home.vercel.app,http://localhost:3000}
-  known-source-apps: ${AUDIT_KNOWN_SOURCE_APPS:continuum-home}
   max-map-entries: 32
   max-value-length: 512
   max-map-depth: 4
-  hash-client-ip: ${AUDIT_HASH_CLIENT_IP:false}
-  retention: ${AUDIT_RETENTION:90d}
-  default-query-limit: 50
-  max-query-limit: 200
   rate-limit-per-minute: ${AUDIT_RATE_LIMIT_PER_MINUTE:120}
-  alert-cooldown: ${AUDIT_ALERT_COOLDOWN:15m}
-  flush-interval-ms: 5000
 
 springdoc:
   api-docs:
@@ -87,7 +81,6 @@ springdoc:
 logging:
   level:
     com.dashboard.api: ${LOG_LEVEL:INFO}
-    # The Firestore client logs a channel-state line per RPC at INFO, which is pure noise
-    # on Cloud Run and is billed as log ingestion.
+    # gRPC (used by the BigQuery client) logs a channel-state line per RPC at INFO, which is
+    # pure noise on Cloud Run and is billed as log ingestion.
     io.grpc: WARN
-    com.google.cloud.firestore: WARN

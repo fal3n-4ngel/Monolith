@@ -93,8 +93,8 @@ jobs:
             --max-instances=5 \
             --cpu-boost \
             --timeout=30s \
-            --set-env-vars="GCP_PROJECT_ID=${{ env.PROJECT_ID }},AUDIT_RETENTION=90d,AUDIT_RATE_LIMIT_PER_MINUTE=120,AUDIT_HASH_CLIENT_IP=false" \
-            --set-secrets="API_KEY=API_KEY:latest,CONTINUUM_API_KEY=CONTINUUM_API_KEY:latest"
+            --set-env-vars="GCP_PROJECT_ID=${{ env.PROJECT_ID }},AUDIT_RATE_LIMIT_PER_MINUTE=120" \
+            --set-secrets="API_KEY=API_KEY:latest,CONTINUUM_API_KEY=CONTINUUM_API_KEY:latest,DISCORD_WEBHOOK_URL=DISCORD_WEBHOOK_URL:latest"
 
       - name: Verify the new revision is serving
         run: |

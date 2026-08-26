@@ -16,11 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Per-IP admission control on the unauthenticated ingest endpoint.
- *
- * <p>{@code /audit/postback} is public by design — the client-side bundle that calls it is
- * public too, so the URL is known. Without a ceiling, anyone can convert a loop into an
- * unbounded Firestore write bill. This is a cost control first and an abuse control second.
+ * Per-IP admission control on the ingest endpoint. Without a ceiling, a caller with a valid key
+ * (or a leaked one) could convert a loop into an unbounded BigQuery insert bill. Cost control
+ * first, abuse control second.
  *
  * <p>Enforcement is per Cloud Run instance and in-memory, so the effective global ceiling is
  * roughly {@code limit × max-instances}. That is the correct trade at this scale: a shared

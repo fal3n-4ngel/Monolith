@@ -1,13 +1,9 @@
-package com.dashboard.api.audit;
+package com.dashboard.api.ingest;
 
 import com.dashboard.api.config.AuditProperties;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -15,11 +11,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Bounds and scrubs the free-form {@code metadata} / {@code context} maps before they reach Firestore.
- *
- * <p>This is a cost control as much as a safety one. Firestore auto-indexes every scalar field
- * in a document, so an unbounded caller-supplied map means unbounded index entries — billed as
- * storage forever, and paid again in write latency on every insert.
+ * Bounds and scrubs a free-form {@code payload} map before it reaches BigQuery — entry count,
+ * string length, and nesting depth, so an unbounded caller-supplied map can't turn into an
+ * unbounded insert cost or a rejected row.
  */
 @Component
 public class PayloadSanitizer {
@@ -101,25 +95,5 @@ public class PayloadSanitizer {
 
     private static String truncate(String value, int max) {
         return value.length() <= max ? value : value.substring(0, max) + "…";
-    }
-
-    /**
-     * Client IPs are personal data. When {@code audit.hash-client-ip} is on we keep a stable
-     * pseudonym instead — still correlatable across events, no longer directly identifying.
-     */
-    public String prepareClientIp(String clientIp) {
-        if (clientIp == null || clientIp.isBlank()) {
-            return null;
-        }
-        if (!props.hashClientIp()) {
-            return truncate(clientIp, 64);
-        }
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(clientIp.trim().getBytes(StandardCharsets.UTF_8));
-            return "sha256:" + HexFormat.of().formatHex(digest).substring(0, 16);
-        } catch (NoSuchAlgorithmException e) {
-            return null; // SHA-256 is mandated by the JDK; unreachable in practice.
-        }
     }
 }

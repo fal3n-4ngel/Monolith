@@ -9,9 +9,8 @@ import jakarta.validation.constraints.Size;
 import java.util.Map;
 
 /**
- * Inbound domain event — "an expense was created", as opposed to the security/session facts
- * {@link AuditPostbackDto} carries. Deliberately no {@code table} field: the destination is
- * resolved server-side from {@code eventType} (see {@code DomainEventType}).
+ * Inbound domain event — "an expense was created." Deliberately no {@code table} field: the
+ * destination is resolved server-side from {@code eventType} (see {@code DomainEventType}).
  */
 @Schema(description = "Domain event emitted by a personal application when a user record changes")
 public class DomainEventDto {

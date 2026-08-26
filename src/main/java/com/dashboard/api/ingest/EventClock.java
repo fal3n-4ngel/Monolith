@@ -1,4 +1,4 @@
-package com.dashboard.api.audit;
+package com.dashboard.api.ingest;
 
 import java.time.Duration;
 import java.time.Instant;

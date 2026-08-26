@@ -21,8 +21,8 @@ public class HealthController {
 
     /**
      * Deliberately minimal. This endpoint is public and is hit by the keep-alive workflow on a
-     * schedule, so it must not touch Firestore: a dependency check here would turn every ping
-     * into a billed read and would fail the liveness probe on a transient backend blip.
+     * schedule, so it must not touch BigQuery: a dependency check here would turn every ping
+     * into a billed operation and would fail the liveness probe on a transient backend blip.
      */
     @Operation(summary = "Service liveness", description = "Returns service identity and server time. No backend dependencies are checked.")
     @SecurityRequirements

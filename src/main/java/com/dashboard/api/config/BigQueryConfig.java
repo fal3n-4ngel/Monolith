@@ -10,9 +10,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 
 /**
- * Mirrors {@link FirestoreConfig}: lazy on purpose, so building the client (which resolves
- * Application Default Credentials) doesn't happen on every cold start, including the ones
- * that only serve a health probe, and the service still boots without GCP credentials.
+ * Lazy on purpose: building the client (which resolves Application Default Credentials) doesn't
+ * happen on every cold start, including the ones that only serve a health probe, and the
+ * service still boots without GCP credentials.
  */
 @Configuration
 public class BigQueryConfig {

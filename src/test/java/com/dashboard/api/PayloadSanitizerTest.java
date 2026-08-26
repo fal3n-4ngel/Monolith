@@ -1,27 +1,18 @@
 package com.dashboard.api;
 
-import com.dashboard.api.audit.PayloadSanitizer;
+import com.dashboard.api.ingest.PayloadSanitizer;
 import com.dashboard.api.config.AuditProperties;
 import org.junit.jupiter.api.Test;
 
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PayloadSanitizerTest {
 
-    private static AuditProperties props(boolean hashIp) {
-        return new AuditProperties(
-                Set.of("https://continuum-home.vercel.app"), Set.of("continuum-home"),
-                3, 10, 2, hashIp,
-                Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15),
-                false, "audit", "events", "US");
-    }
-
-    private static final PayloadSanitizer SANITIZER = new PayloadSanitizer(props(false));
+    private static final AuditProperties PROPS = new AuditProperties(3, 10, 2, 120, false, "events", "US");
+    private static final PayloadSanitizer SANITIZER = new PayloadSanitizer(PROPS);
 
     @Test
     void capsEntryCountAndRecordsWhatWasDropped() {
@@ -65,22 +56,5 @@ class PayloadSanitizerTest {
     void nullAndEmptyInputCollapseToAnEmptyMap() {
         assertThat(SANITIZER.sanitize(null)).isEmpty();
         assertThat(SANITIZER.sanitize(Map.of())).isEmpty();
-    }
-
-    @Test
-    void clientIpIsPassedThroughUnlessHashingIsEnabled() {
-        assertThat(SANITIZER.prepareClientIp("203.0.113.9")).isEqualTo("203.0.113.9");
-        assertThat(SANITIZER.prepareClientIp(null)).isNull();
-    }
-
-    @Test
-    void hashedClientIpIsStableAndNoLongerIdentifying() {
-        PayloadSanitizer hashing = new PayloadSanitizer(props(true));
-
-        String first = hashing.prepareClientIp("203.0.113.9");
-        String second = hashing.prepareClientIp("203.0.113.9");
-
-        assertThat(first).isEqualTo(second).startsWith("sha256:").doesNotContain("203.0.113.9");
-        assertThat(hashing.prepareClientIp("203.0.113.10")).isNotEqualTo(first);
     }
 }

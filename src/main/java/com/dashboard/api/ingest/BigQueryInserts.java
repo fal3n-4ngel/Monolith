@@ -1,4 +1,4 @@
-package com.dashboard.api.audit;
+package com.dashboard.api.ingest;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

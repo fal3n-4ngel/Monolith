@@ -1,18 +1,17 @@
 package com.dashboard.api;
 
-import com.dashboard.api.audit.PayloadSanitizer;
+import com.dashboard.api.ingest.PayloadSanitizer;
 import com.dashboard.api.config.AuditProperties;
 import com.dashboard.api.dto.DomainEventDto;
 import com.dashboard.api.dto.DomainEventResponse;
 import com.dashboard.api.events.DomainEventWriter;
+import com.dashboard.api.notify.DiscordNotifier;
 import com.dashboard.api.service.DomainEventService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import java.time.Duration;
 import java.util.Map;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -24,11 +23,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 class DomainEventServiceTest {
 
-    private static final AuditProperties PROPS = new AuditProperties(
-            Set.of("https://continuum-home.vercel.app"), Set.of("continuum-home"),
-            32, 512, 4, false,
-            Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15),
-            false, "audit", "events", "US");
+    private static final AuditProperties PROPS = new AuditProperties(32, 512, 4, 120, false, "events", "US");
 
     private DomainEventWriter writer;
     private DomainEventService service;
@@ -36,7 +31,7 @@ class DomainEventServiceTest {
     @BeforeEach
     void setUp() {
         writer = mock(DomainEventWriter.class);
-        service = new DomainEventService(writer, new PayloadSanitizer(PROPS));
+        service = new DomainEventService(writer, new PayloadSanitizer(PROPS), mock(DiscordNotifier.class));
     }
 
     private static DomainEventDto event(String eventType) {

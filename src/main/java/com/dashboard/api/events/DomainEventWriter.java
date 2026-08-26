@@ -1,6 +1,6 @@
 package com.dashboard.api.events;
 
-import com.dashboard.api.audit.BigQueryInserts;
+import com.dashboard.api.ingest.BigQueryInserts;
 import com.dashboard.api.config.AuditProperties;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.TableId;

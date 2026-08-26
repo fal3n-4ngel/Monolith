@@ -67,7 +67,7 @@ public enum DomainEventType {
         return normalize(sourceApp) + "_" + domain;
     }
 
-    /** {@code AuditPostbackDto} already bounds sourceApp to [A-Za-z0-9._-]; this maps it to a legal table id. */
+    /** {@code DomainEventDto} already bounds sourceApp to [A-Za-z0-9._-]; this maps it to a legal table id. */
     private static String normalize(String sourceApp) {
         return sourceApp.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_");
     }

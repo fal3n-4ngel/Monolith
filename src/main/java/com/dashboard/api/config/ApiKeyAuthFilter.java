@@ -27,10 +27,9 @@ import java.util.Set;
 /**
  * Authenticates protected endpoints with either a static bearer API key or a Google ID token.
  *
- * <p><b>Fails closed.</b> The previous implementation granted access whenever no API key was
- * configured on the server, reasoning that unconfigured meant "internal call". Combined with
- * Cloud Run's {@code --allow-unauthenticated}, a single failed secret mount silently exposed
- * the full audit log — including client IPs — to the internet. A misconfigured server now
+ * <p><b>Fails closed.</b> A missing API key does not fall back to open access — combined with
+ * Cloud Run's {@code --allow-unauthenticated}, that would have meant a single failed secret
+ * mount silently exposing every authenticated endpoint to the internet. A misconfigured server
  * rejects requests instead, and says so loudly at startup.
  */
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
@@ -41,8 +40,6 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     private static final List<String> PUBLIC_PREFIXES = List.of(
             "/swagger-ui", "/v3/api-docs", "/actuator");
     private static final List<String> PUBLIC_EXACT = List.of("/", "/health", "/error");
-    private static final List<String> PUBLIC_POSTBACK = List.of(
-            "/api/v1/audit/postback", "/audit/postback", "/api/audit/postback");
 
     private final Set<String> validApiKeys;
     private final String allowedEmail;
@@ -69,7 +66,6 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
         return PUBLIC_EXACT.contains(path)
-                || PUBLIC_POSTBACK.contains(path)
                 || PUBLIC_PREFIXES.stream().anyMatch(path::startsWith);
     }
 

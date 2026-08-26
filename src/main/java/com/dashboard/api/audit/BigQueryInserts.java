@@ -14,17 +14,14 @@ import java.util.Map;
 /**
  * Single-row streaming insert with a retry, shared by the audit and domain-event writers.
  *
- * <p>Exists because of a failure seen in production: Cloud Run scales to zero and idles, and the
- * BigQuery client's pooled HTTPS connection is silently dropped while the instance sleeps. The
- * next insert writes into a dead socket and fails with {@code SocketException: Broken pipe}
- * before a single byte reaches BigQuery. A second attempt opens a fresh connection and succeeds.
+ * <p>Exists because of a failure seen in production: Cloud Run idles, the BigQuery client's
+ * pooled HTTPS connection dies silently, and the next insert fails with
+ * {@code SocketException: Broken pipe} before a byte reaches BigQuery. A second attempt on a
+ * fresh connection succeeds.
  *
- * <p><b>Retrying is only safe because every row carries an {@code insertId}.</b> BigQuery
- * deduplicates on it, so a retry after an ambiguous failure — one where the first attempt may
- * actually have landed — cannot produce a duplicate row.
- *
- * <p>Row-level errors reported in the response are <i>not</i> retried: those are schema or data
- * problems, and a second identical attempt would fail identically.
+ * <p>Retrying is only safe because every row carries an {@code insertId} — BigQuery dedupes on
+ * it, so a retry after an ambiguous failure can't produce a duplicate. Row-level rejections
+ * (schema/data problems) are <i>not</i> retried: a second identical attempt fails identically.
  */
 public final class BigQueryInserts {
 
@@ -37,12 +34,9 @@ public final class BigQueryInserts {
     }
 
     /**
-     * Serializes a value destined for a BigQuery {@code JSON} column.
-     *
-     * <p>Required, not cosmetic: the streaming API will not accept a nested map for a
-     * {@code JSON} column. Handed one, it interprets the nesting as a STRUCT and rejects the row
-     * with {@code "This field: <name> is not a record"} — which is a data-level rejection, so it
-     * is not retried and the row is simply lost. JSON columns take a serialized string.
+     * Serializes a value for a BigQuery {@code JSON} column. The streaming API rejects a raw
+     * nested map there — {@code "This field: <name> is not a record"} — since it reads the
+     * nesting as a STRUCT. JSON columns need a serialized string.
      *
      * @return the JSON text, or {@code null} for a null/empty value or an unserializable one.
      */

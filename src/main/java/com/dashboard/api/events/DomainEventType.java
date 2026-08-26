@@ -7,15 +7,12 @@ import java.util.Optional;
  * The allowlist of domain events this service accepts, and the only place that decides which
  * table each one lands in.
  *
- * <p>Callers name an <i>event</i>, never a table. Routing is server-side on purpose: the
- * alternative — letting the client name its own destination — makes table identifiers
- * caller-controlled, and BigQuery cannot parameterize identifiers the way it parameterizes
- * values. Schema ownership stays in this repo, reviewed here, rather than with whoever happens
- * to be calling the endpoint.
+ * <p>Callers name an <i>event</i>, never a table — table identifiers can't be parameterized the
+ * way values can, so a caller-supplied destination would be a validation problem, and schema
+ * ownership belongs here, not with whoever calls the endpoint. An unrecognized {@code eventType}
+ * is rejected with 400, not silently dropped.
  *
  * <p>Adding an event is a one-line change here plus a table in {@code infra/setup-bigquery.sh}.
- * An unrecognized {@code eventType} is rejected with 400 rather than silently dropped, so a
- * typo in a client surfaces immediately instead of becoming a hole in the record.
  */
 public enum DomainEventType {
 
@@ -65,13 +62,7 @@ public enum DomainEventType {
         }
     }
 
-    /**
-     * Resolves the destination table as {@code {sourceApp}_{domain}} — e.g. a
-     * {@code EXPENSE_CREATED} from {@code continuum-home} lands in {@code continuum_home_expenses}.
-     *
-     * <p>One table per app per domain keeps each one's rows homogeneous, while the shared column
-     * set (see {@code infra/setup-bigquery.sh}) keeps every cross-app join the same shape.
-     */
+    /** {@code {sourceApp}_{domain}} — e.g. {@code EXPENSE_CREATED} from {@code continuum-home} lands in {@code continuum_home_expenses}. */
     public String tableFor(String sourceApp) {
         return normalize(sourceApp) + "_" + domain;
     }

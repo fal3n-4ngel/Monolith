@@ -41,9 +41,9 @@ Accepts a static API key or a Google ID token whose email matches `ALLOWED_EMAIL
 Credentials are read from the `Authorization` header only — there is no `?key=` fallback,
 because that writes the secret into Cloud Run request logs and browser history.
 
-A ready-to-run request collection for both endpoints is in [`bruno/Audit`](bruno/Audit) —
-open the `bruno/` folder in [Bruno](https://www.usebruno.com) and select the `Local` or
-`Production` environment.
+A ready-to-run request collection is in [`bruno/`](bruno) — open the folder in
+[Bruno](https://www.usebruno.com) and select the `Local` or `Production` environment. Covers
+audit ingest and query (`bruno/Audit`) and domain-event ingest (`bruno/Domain Events`).
 
 ---
 
@@ -133,7 +133,9 @@ cross-app identity linking.
 ./infra/setup-bigquery.sh portfolio-api-505006 US
 ```
 
-Idempotent, and creates one dataset (`audit`), two tables, and one view:
+Idempotent, and creates two datasets:
+
+**`audit`** — audit events and identity linking:
 
 1. **`audit_events`** — append-only fact table, one row per postback. Partitioned by
    `event_timestamp` and clustered by `source_app, event_type`, the same cost discipline as the
@@ -147,6 +149,11 @@ Idempotent, and creates one dataset (`audit`), two tables, and one view:
    is "whatever set of app accounts share a verified email," computed at query time — there is
    no separately maintained global-user-id table, because email already is the stable one.
 
+**`events`** — one table per app per domain, all sharing one column set (`event_id`,
+`source_app`, `local_user_id`, `event_type`, `action`, `entity_id`, `item_count`, `occurred_at`,
+`received_at`, `payload`), plus `user_activity` — a view unioning every domain table and joining
+it to `identity_links`, the cross-app query surface described under **Domain events** below.
+
 **Email is the only matching key. Name is stored for display only, never used to link two
 accounts.** Google Sign-In gives a verified email; names collide across distinct real people and
 would silently merge them. `AUDIT_KNOWN_SOURCE_APPS` already anticipates more than one
@@ -154,9 +161,9 @@ would silently merge them. `AUDIT_KNOWN_SOURCE_APPS` already anticipates more th
 exactly one row per Continuum user and `identities.app_count` will always read `1`. That's the
 pipeline waiting for a second app, not a broken one.
 
-`eventId` (client-generated, see `lib/audit-postback/client.ts` in Continuum) is used as the
-BigQuery `insertId` on the `audit_events` insert, so a retried or `keepalive`-resent postback
-lands once instead of twice.
+`eventId` (client-generated) is used as the BigQuery `insertId` on every insert — audit and
+domain — so a retried or resent postback lands once instead of twice. Streaming inserts retry
+once on a transient connection failure (`BigQueryInserts`); this is what makes that retry safe.
 
 ---
 
@@ -195,12 +202,8 @@ surfaces immediately instead of quietly becoming a gap.
 
 ### One column set across every table
 
-Every domain table — for every app, every domain — has the same columns: `event_id`,
-`source_app`, `local_user_id`, `event_type`, `action`, `entity_id`, `item_count`, `occurred_at`,
-`received_at`, `payload`.
-
-That uniformity is what makes cross-app querying tractable. Because `source_app` +
-`local_user_id` appear everywhere, joining any domain table to `identity_links` is always the
+Every domain table shares the same columns (listed under **BigQuery setup** above), which is
+what makes cross-app querying tractable: joining any of them to `identity_links` is always the
 same shape, and `events.user_activity` unions all of them into one person-resolved stream:
 
 ```sql

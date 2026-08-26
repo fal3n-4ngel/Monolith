@@ -10,11 +10,8 @@ import java.util.Map;
 
 /**
  * Inbound domain event — "an expense was created", as opposed to the security/session facts
- * {@link AuditPostbackDto} carries.
- *
- * <p>Deliberately no {@code table} field: the destination is resolved server-side from
- * {@code eventType} (see {@code DomainEventType}). Callers describe what happened; this service
- * decides where it is stored.
+ * {@link AuditPostbackDto} carries. Deliberately no {@code table} field: the destination is
+ * resolved server-side from {@code eventType} (see {@code DomainEventType}).
  */
 @Schema(description = "Domain event emitted by a personal application when a user record changes")
 public class DomainEventDto {

@@ -18,16 +18,9 @@ import java.util.Map;
 
 /**
  * Second, unbounded-retention sink for audit events — additive to {@link AuditLogWriter}, never
- * a replacement. Firestore stays the short-TTL operational store behind {@code /api/v1/audit/logs};
- * this writer feeds {@code audit_events} (append-only fact table) and {@code identity_links}
- * (upserted, the actual cross-app "fact linking" — one row per app-local user ever seen with a
- * verified email). See {@code infra/setup-bigquery.sh} for the DDL both tables depend on.
- *
- * <p>Uses the plain streaming {@code insertAll} rather than the Storage Write API: per-row
- * {@code insertId}-based dedup (what {@code eventId} exists for) is a first-class feature of
- * {@code insertAll}, whereas the Storage Write API's default stream has no equivalent — only its
- * committed/pending stream types do, at a complexity and dependency cost this volume doesn't
- * justify. Legacy streaming pricing is negligible at personal-project scale.
+ * a replacement. Feeds {@code audit_events} (append-only fact table) and {@code identity_links}
+ * (upserted cross-app identity linking, keyed on verified email). See
+ * {@code infra/setup-bigquery.sh} for the DDL both tables depend on.
  */
 @Component
 public class BigQueryAuditWriter {

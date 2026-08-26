@@ -13,6 +13,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -92,22 +93,26 @@ public class DiscordNotifier {
             throws Exception {
         boolean isTest = environment == null || !"production".equalsIgnoreCase(environment.trim());
         int color = isTest ? COLOR_MUTED_GRAY : COLOR_GREEN;
-        String title = (isTest ? "🧪 [TEST] " : "📥 ") + eventType;
-        String statusText = isTest ? "TEST / NON-PROD" : "PRODUCTION";
+        String title = (isTest ? "🧪 [TEST RUN] " : "📥 ") + eventType;
+        String statusText = isTest ? "TEST RUN" : "PRODUCTION";
+        String username = isTest ? "Monolith Events [TEST RUN]" : "Monolith Events";
 
-        Map<String, Object> embed = Map.of(
-                "title", title,
-                "color", color,
-                "timestamp", Instant.now().toString(),
-                "fields", List.of(
-                        field("Source", sourceApp, true),
-                        field("Environment", environment == null ? "unknown" : environment, true),
-                        field("Status", statusText, true),
-                        field("Table", table, true),
-                        field("Event ID", eventId, false)));
+        Map<String, Object> embed = new LinkedHashMap<>();
+        embed.put("title", title);
+        embed.put("color", color);
+        if (isTest) {
+            embed.put("description", "⚠️ **TEST RUN** — Event emitted from a non-production test environment.");
+        }
+        embed.put("timestamp", Instant.now().toString());
+        embed.put("fields", List.of(
+                field("Source", sourceApp, true),
+                field("Environment", environment == null ? "test/local" : environment, true),
+                field("Status", statusText, true),
+                field("Table", table, true),
+                field("Event ID", eventId, false)));
 
         String body = MAPPER.writeValueAsString(Map.of(
-                "username", "Monolith Events",
+                "username", username,
                 "embeds", List.of(embed)));
 
         return HttpRequest.newBuilder(URI.create(webhookUrl))

@@ -19,6 +19,13 @@ each to its per-app, per-domain BigQuery table, and post a visible confirmation 
 
 `/events/*` is retained as an alias for the versioned path.
 
+---
+
+## Developer Documentation & Model Context Protocol (MCP) Server
+
+- **Documentation Website:** [https://monolith.adithyakrishnan.com](https://monolith.adithyakrishnan.com) (Single-page developer portal rendered in warm parchment cream theme).
+- **Model Context Protocol (MCP) Server:** `https://monolith.adithyakrishnan.com/api/mcp` (Exposes `query_user_activity`, `query_domain_events`, `get_bigquery_schema`, and `get_system_health` tools for AI agents).
+
 ### Ingest
 
 ```bash

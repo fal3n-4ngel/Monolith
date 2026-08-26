@@ -19,6 +19,8 @@ public enum DomainEventType {
     EXPENSE_CREATED("expenses", Action.CREATE),
     EXPENSE_UPDATED("expenses", Action.UPDATE),
     EXPENSE_DELETED("expenses", Action.DELETE),
+    SALARY_UPDATED("expenses", Action.UPDATE),
+    SALARY_LOGGED("expenses", Action.CREATE),
 
     WATCHLIST_ADDED("watchlist", Action.CREATE),
     WATCHLIST_UPDATED("watchlist", Action.UPDATE),

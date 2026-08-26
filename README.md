@@ -25,6 +25,7 @@ each to its per-app, per-domain BigQuery table, and post a visible confirmation 
 
 - **Documentation Website:** [https://monolith.adithyakrishnan.com](https://monolith.adithyakrishnan.com) (Single-page developer portal rendered in warm parchment cream theme).
 - **Model Context Protocol (MCP) Server:** `https://monolith.adithyakrishnan.com/api/mcp` (Exposes `query_user_activity`, `query_domain_events`, `get_bigquery_schema`, and `get_system_health` tools for AI agents).
+- **App Integration Guide:** Complete step-by-step developer guide in [`APP_INTEGRATION_GUIDE.md`](APP_INTEGRATION_GUIDE.md).
 
 ### Ingest
 

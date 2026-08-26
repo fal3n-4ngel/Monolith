@@ -6,6 +6,7 @@ import com.dashboard.api.ingest.PayloadSanitizer;
 import com.dashboard.api.dto.DomainEventDto;
 import com.dashboard.api.dto.DomainEventResponse;
 import com.dashboard.api.events.DomainEventType;
+import com.dashboard.api.events.SourceApp;
 import com.dashboard.api.events.DomainEventWriter;
 import com.dashboard.api.notify.DiscordNotifier;
 import org.slf4j.Logger;
@@ -35,6 +36,12 @@ public class DomainEventService {
     }
 
     public DomainEventResponse record(DomainEventDto dto) {
+        Optional<SourceApp> sourceApp = SourceApp.parse(dto.getSourceApp());
+        if (sourceApp.isEmpty()) {
+            log.warn("[Event] REJECTED sourceApp={} eventType={}", dto.getSourceApp(), dto.getEventType());
+            return DomainEventResponse.rejected(dto.getEventType(), "unknown_source_app");
+        }
+
         Optional<DomainEventType> resolved = DomainEventType.parse(dto.getEventType());
         if (resolved.isEmpty()) {
             log.warn("[Event] REJECTED eventType={} source={}", dto.getEventType(), dto.getSourceApp());

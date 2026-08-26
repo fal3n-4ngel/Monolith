@@ -92,6 +92,7 @@ jobs:
             --min-instances=0 \
             --max-instances=5 \
             --cpu-boost \
+            --no-cpu-throttling \
             --timeout=30s \
             --set-env-vars="GCP_PROJECT_ID=${{ env.PROJECT_ID }},AUDIT_RATE_LIMIT_PER_MINUTE=120" \
             --set-secrets="API_KEY=API_KEY:latest,CONTINUUM_API_KEY=CONTINUUM_API_KEY:latest,DISCORD_WEBHOOK_URL=DISCORD_WEBHOOK_URL:latest"

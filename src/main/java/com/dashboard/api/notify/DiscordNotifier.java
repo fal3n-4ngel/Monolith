@@ -30,6 +30,7 @@ public class DiscordNotifier {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(25);
     private static final int MAX_ATTEMPTS = 2;
     private static final int COLOR_GREEN = 0x22C55E;
+    private static final int COLOR_AMBER = 0xF59E0B;
     private static final int COLOR_MUTED_GRAY = 0x6B7280;
 
     private final String webhookUrl;
@@ -82,8 +83,6 @@ public class DiscordNotifier {
             } catch (Exception e) {
                 if (attempt < MAX_ATTEMPTS) {
                     log.warn("[Discord] Send failed for {} ({}); retrying", eventType, e.getMessage());
-                } else {
-                    log.warn("[Discord] Notification failed for {} after {} attempts: {}", eventType, MAX_ATTEMPTS, e.getMessage());
                 }
             }
         }
@@ -91,17 +90,38 @@ public class DiscordNotifier {
 
     private HttpRequest buildRequest(String eventType, String sourceApp, String table, String environment, String eventId)
             throws Exception {
-        boolean isTest = environment == null || !"production".equalsIgnoreCase(environment.trim());
-        int color = isTest ? COLOR_MUTED_GRAY : COLOR_GREEN;
-        String title = (isTest ? "🧪 [TEST RUN] " : "📥 ") + eventType;
-        String statusText = isTest ? "TEST RUN" : "PRODUCTION";
-        String username = isTest ? "Monolith Events [TEST RUN]" : "Monolith Events";
+        String envClean = environment == null ? "unknown" : environment.trim().toLowerCase();
+
+        int color;
+        String title;
+        String statusText;
+        String username;
+        String description = null;
+
+        if ("production".equalsIgnoreCase(envClean) || "prod".equalsIgnoreCase(envClean)) {
+            color = COLOR_GREEN;
+            title = "📥 " + eventType;
+            statusText = "PRODUCTION";
+            username = "Monolith Events";
+        } else if ("uat".equalsIgnoreCase(envClean)) {
+            color = COLOR_AMBER;
+            title = "🚀 [UAT] " + eventType;
+            statusText = "UAT";
+            username = "Monolith Events [UAT]";
+            description = "🚀 **UAT ENVIRONMENT** — Event emitted from UAT staging.";
+        } else {
+            color = COLOR_MUTED_GRAY;
+            title = "🧪 [TEST RUN] " + eventType;
+            statusText = "TEST RUN";
+            username = "Monolith Events [TEST RUN]";
+            description = "⚠️ **TEST RUN** — Event emitted from a local or test environment.";
+        }
 
         Map<String, Object> embed = new LinkedHashMap<>();
         embed.put("title", title);
         embed.put("color", color);
-        if (isTest) {
-            embed.put("description", "⚠️ **TEST RUN** — Event emitted from a non-production test environment.");
+        if (description != null) {
+            embed.put("description", description);
         }
         embed.put("timestamp", Instant.now().toString());
         embed.put("fields", List.of(

@@ -52,8 +52,16 @@ public class DomainEventService {
         Map<String, Object> sanitizedPayload = sanitizer.sanitize(dto.getPayload());
         Object environment = sanitizedPayload.get("environment");
         String envStr = environment == null ? null : environment.toString();
-        boolean isTest = envStr == null || !"production".equalsIgnoreCase(envStr.trim());
-        String logTag = isTest ? "[Event:TEST]" : "[Event]";
+        String envClean = envStr == null ? "unknown" : envStr.trim().toLowerCase();
+
+        String logTag;
+        if ("production".equals(envClean) || "prod".equals(envClean)) {
+            logTag = "[Event]";
+        } else if ("uat".equals(envClean)) {
+            logTag = "[Event:UAT]";
+        } else {
+            logTag = "[Event:TEST]";
+        }
 
         log.info("{} ACCEPTED eventType={} eventId={} source={} env={} table={}", logTag, type.name(), eventId, dto.getSourceApp(), envStr == null ? "unknown" : envStr, table);
 

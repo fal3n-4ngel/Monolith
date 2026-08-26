@@ -37,7 +37,7 @@ Upon ticket approval, the Monolith maintainer provisions:
 ## Step 3: Implement Postback Dispatcher in Your App
 
 ### 📡 Ingestion Endpoint
-- **URL:** `POST https://api.adithyakrishnan.com/api/v1/events/postback`
+- **URL:** `POST https://monolith-postbacks.adithyakrishnan.com/api/v1/events/postback`
 - **Header:** `Authorization: Bearer <MONOLITH_API_KEY>` or `Authorization: Bearer <GOOGLE_ID_TOKEN>`
 - **Content-Type:** `application/json`
 
@@ -75,7 +75,7 @@ export function recordDomainEvent(event: {
   payload?: Record<string, any>;
 }) {
   after(async () => {
-    await fetch("https://api.adithyakrishnan.com/api/v1/events/postback", {
+    await fetch("https://monolith-postbacks.adithyakrishnan.com/api/v1/events/postback", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -108,7 +108,7 @@ import time
 import os
 
 def send_domain_event(event_type: str, user_id: str, user_email: str, payload: dict):
-    url = "https://api.adithyakrishnan.com/api/v1/events/postback"
+    url = "https://monolith-postbacks.adithyakrishnan.com/api/v1/events/postback"
     headers = {
         "Authorization": f"Bearer {os.environ['MONOLITH_API_KEY']}",
         "Content-Type": "application/json"

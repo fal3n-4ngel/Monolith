@@ -2,7 +2,7 @@
 
 Central domain-event ingest for [Continuum Home](https://continuum-home.vercel.app) and other
 personal applications. Java 21 / Spring Boot 3, backed by BigQuery, deployed to Cloud Run behind
-`api.adithyakrishnan.com`.
+`monolith-postbacks.adithyakrishnan.com`.
 
 The service does one job: accept application-history events from a trusted server backend, route
 each to its per-app, per-domain BigQuery table, and post a visible confirmation to Discord.
@@ -30,7 +30,7 @@ each to its per-app, per-domain BigQuery table, and post a visible confirmation 
 ### Ingest
 
 ```bash
-curl -X POST https://api.adithyakrishnan.com/api/v1/events/postback \
+curl -X POST https://monolith-postbacks.adithyakrishnan.com/api/v1/events/postback \
   -H "Authorization: Bearer $CONTINUUM_API_KEY" -H 'Content-Type: application/json' \
   -d '{"sourceApp":"continuum-home","eventType":"EXPENSE_CREATED","userId":"usr_1","payload":{"amount":42.5,"category":"food"}}'
 ```

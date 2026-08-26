@@ -2,7 +2,7 @@
 
 **Monolith** is the central data warehouse, telemetry ingest engine, and analytics audit hub for personal applications (such as **Continuum Home**, **Monolith Dashboard**, and future integrated services).
 
-It runs on **Java 21 / Spring Boot 3** deployed to GCP Cloud Run (`https://api.adithyakrishnan.com`), backed by **Google BigQuery** (`portfolio-api-505006`), and posts real-time event heartbeats to **Discord**.
+It runs on **Java 21 / Spring Boot 3** deployed to GCP Cloud Run (`https://monolith-postbacks.adithyakrishnan.com`), backed by **Google BigQuery** (`portfolio-api-505006`), and posts real-time event heartbeats to **Discord**.
 
 ---
 
@@ -96,7 +96,7 @@ GROUP BY local_user_id;
 Applications emit events **server-to-server** after a write or state change succeeds in their backend database. 
 
 ### Endpoint
-- **URL**: `POST https://api.adithyakrishnan.com/api/v1/events/postback`
+- **URL**: `POST https://monolith-postbacks.adithyakrishnan.com/api/v1/events/postback`
 - **Headers**:
   - `Content-Type: application/json`
   - `Authorization: Bearer <YOUR_MONOLITH_API_KEY>`

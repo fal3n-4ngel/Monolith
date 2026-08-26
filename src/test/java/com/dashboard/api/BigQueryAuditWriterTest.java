@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -138,6 +139,50 @@ class BigQueryAuditWriterTest {
         writer.enqueue(document);
 
         verify(bigQuery, never()).query(any());
+    }
+
+    @Test
+    void retriesOnceWhenAnIdleConnectionDiesMidInsert() {
+        // Observed in production: Cloud Run idles, the pooled HTTPS connection is dropped, and
+        // the next insert fails with a broken pipe before reaching BigQuery. The retry is only
+        // safe because insertId dedupes, so a first attempt that did land can't duplicate.
+        InsertAllResponse ok = mock(InsertAllResponse.class);
+        when(ok.hasErrors()).thenReturn(false);
+        when(bigQuery.insertAll(any(InsertAllRequest.class)))
+                .thenThrow(new RuntimeException(new java.net.SocketException("Broken pipe")))
+                .thenReturn(ok);
+
+        writer.enqueue(baseDocument());
+
+        ArgumentCaptor<InsertAllRequest> captor = ArgumentCaptor.forClass(InsertAllRequest.class);
+        verify(bigQuery, times(2)).insertAll(captor.capture());
+        // Both attempts carry the same insertId — that is what makes the retry non-duplicating.
+        assertThat(captor.getAllValues()).allSatisfy(
+                request -> assertThat(request.getRows().get(0).getId()).isEqualTo("evt-1"));
+    }
+
+    @Test
+    void givesUpAfterTheRetryRatherThanLoopingOrThrowing() {
+        when(bigQuery.insertAll(any(InsertAllRequest.class)))
+                .thenThrow(new RuntimeException(new java.net.SocketException("Broken pipe")));
+
+        // Telemetry must never be able to break the thing it observes.
+        writer.enqueue(baseDocument());
+
+        verify(bigQuery, times(2)).insertAll(any(InsertAllRequest.class));
+    }
+
+    @Test
+    void rowLevelRejectionIsNotRetried() {
+        // A schema/data rejection fails identically on a second attempt; retrying only burns quota.
+        InsertAllResponse rejected = mock(InsertAllResponse.class);
+        when(rejected.hasErrors()).thenReturn(true);
+        when(rejected.getInsertErrors()).thenReturn(java.util.Map.of());
+        when(bigQuery.insertAll(any(InsertAllRequest.class))).thenReturn(rejected);
+
+        writer.enqueue(baseDocument());
+
+        verify(bigQuery, times(1)).insertAll(any(InsertAllRequest.class));
     }
 
     @Test

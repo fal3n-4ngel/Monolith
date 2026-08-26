@@ -138,8 +138,28 @@ class DomainEventServiceTest {
 
         service.record(dto);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> payload = (Map<String, Object>) captureRow().get("payload");
-        assertThat(payload).containsEntry("apiKey", "[REDACTED]").containsEntry("amount", 10);
+        assertThat((String) captureRow().get("payload"))
+                .contains("\"apiKey\":\"[REDACTED]\"")
+                .contains("\"amount\":10");
+    }
+
+    @Test
+    void payloadIsSerializedAsJsonTextNotANestedMap() {
+        // BigQuery JSON columns reject a nested map over the streaming API with
+        // "This field: payload is not a record" — a data-level rejection that isn't retried,
+        // so the row is lost silently. Observed in production; pinned here.
+        DomainEventDto dto = event("EXPENSE_CREATED");
+        dto.setPayload(Map.of("amount", 42.5));
+
+        service.record(dto);
+
+        assertThat(captureRow().get("payload")).isInstanceOf(String.class);
+    }
+
+    @Test
+    void emptyPayloadIsOmittedRatherThanSentAsEmptyJson() {
+        service.record(event("EXPENSE_DELETED"));
+
+        assertThat(captureRow()).doesNotContainKey("payload");
     }
 }

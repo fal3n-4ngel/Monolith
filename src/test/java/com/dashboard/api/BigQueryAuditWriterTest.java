@@ -91,6 +91,26 @@ class BigQueryAuditWriterTest {
     }
 
     @Test
+    void jsonColumnsAreSerializedAsTextNotNestedMaps() {
+        // BigQuery JSON columns reject a nested map over the streaming API with
+        // "This field: metadata is not a record" — a data-level rejection that isn't retried,
+        // so the row is lost silently. Observed in production; pinned here.
+        Map<String, Object> document = baseDocument();
+        document.put("context", Map.of("environment", "uat"));
+        document.put("metadata", Map.of("email", "person@example.com"));
+
+        writer.enqueue(document);
+
+        ArgumentCaptor<InsertAllRequest> captor = ArgumentCaptor.forClass(InsertAllRequest.class);
+        verify(bigQuery).insertAll(captor.capture());
+        Map<String, Object> row = captor.getValue().getRows().get(0).getContent();
+
+        assertThat(row.get("context")).isInstanceOf(String.class);
+        assertThat(row.get("metadata")).isInstanceOf(String.class);
+        assertThat((String) row.get("metadata")).contains("person@example.com");
+    }
+
+    @Test
     void fallsBackToLogIdWhenEventIdIsAbsent() {
         Map<String, Object> document = baseDocument();
         document.remove("eventId");

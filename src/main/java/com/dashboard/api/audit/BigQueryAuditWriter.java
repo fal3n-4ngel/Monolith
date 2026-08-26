@@ -101,11 +101,12 @@ public class BigQueryAuditWriter {
             row.put("observed_client_ip", observed.get("clientIp"));
         }
 
-        // context/metadata are native BigQuery JSON columns — pass the sanitized maps through
-        // as-is, same shape they're stored in Firestore, rather than a fixed set of columns.
-        row.put("context", document.get("context"));
-        if (document.get("metadata") != null) {
-            row.put("metadata", document.get("metadata"));
+        // context/metadata are native BigQuery JSON columns, which over the streaming API take
+        // serialized JSON text — a nested map is read as a STRUCT and rejects the whole row.
+        row.put("context", BigQueryInserts.toJsonColumn(document.get("context")));
+        String metadata = BigQueryInserts.toJsonColumn(document.get("metadata"));
+        if (metadata != null) {
+            row.put("metadata", metadata);
         }
 
         // insertId = eventId gives best-effort dedup: a retried or keepalive-resent postback

@@ -1,5 +1,6 @@
 package com.dashboard.api.service;
 
+import com.dashboard.api.audit.BigQueryInserts;
 import com.dashboard.api.audit.EventClock;
 import com.dashboard.api.audit.PayloadSanitizer;
 import com.dashboard.api.dto.DomainEventDto;
@@ -58,8 +59,10 @@ public class DomainEventService {
         row.put("occurred_at", Instant.ofEpochMilli(occurredAt).toString());
         row.put("received_at", receivedAt.toString());
 
-        Map<String, Object> payload = sanitizer.sanitize(dto.getPayload());
-        if (!payload.isEmpty()) {
+        // payload is a BigQuery JSON column: it takes serialized JSON text over the streaming
+        // API, not a nested map (which is read as a STRUCT and rejects the row).
+        String payload = BigQueryInserts.toJsonColumn(sanitizer.sanitize(dto.getPayload()));
+        if (payload != null) {
             row.put("payload", payload);
         }
 

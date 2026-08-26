@@ -1,5 +1,7 @@
 package com.dashboard.api.audit;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.InsertAllRequest;
 import com.google.cloud.bigquery.InsertAllResponse;
@@ -29,8 +31,32 @@ public final class BigQueryInserts {
     private static final Logger log = LoggerFactory.getLogger(BigQueryInserts.class);
     private static final int MAX_ATTEMPTS = 2;
     private static final long RETRY_DELAY_MS = 100;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private BigQueryInserts() {
+    }
+
+    /**
+     * Serializes a value destined for a BigQuery {@code JSON} column.
+     *
+     * <p>Required, not cosmetic: the streaming API will not accept a nested map for a
+     * {@code JSON} column. Handed one, it interprets the nesting as a STRUCT and rejects the row
+     * with {@code "This field: <name> is not a record"} — which is a data-level rejection, so it
+     * is not retried and the row is simply lost. JSON columns take a serialized string.
+     *
+     * @return the JSON text, or {@code null} for a null/empty value or an unserializable one.
+     */
+    public static String toJsonColumn(Object value) {
+        if (value == null || (value instanceof Map<?, ?> map && map.isEmpty())) {
+            return null;
+        }
+        try {
+            return MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            // Dropping one column beats losing the whole row to a rejection.
+            log.warn("[BigQuery] Could not serialize a JSON column; omitting it: {}", e.getMessage());
+            return null;
+        }
     }
 
     /** @return true if BigQuery accepted the row. Never throws: ingestion is best-effort. */

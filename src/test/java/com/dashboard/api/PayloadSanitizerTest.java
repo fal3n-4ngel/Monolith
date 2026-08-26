@@ -17,7 +17,8 @@ class PayloadSanitizerTest {
         return new AuditProperties(
                 Set.of("https://continuum-home.vercel.app"), Set.of("continuum-home"),
                 3, 10, 2, hashIp,
-                Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15));
+                Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15),
+                false, "audit", "US");
     }
 
     private static final PayloadSanitizer SANITIZER = new PayloadSanitizer(props(false));

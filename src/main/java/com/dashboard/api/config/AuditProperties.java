@@ -53,6 +53,16 @@ public record AuditProperties(
         @DefaultValue("120") int rateLimitPerMinute,
 
         /** Suppress duplicate security alerts for the same origin inside this window. */
-        @DefaultValue("15m") Duration alertCooldown
+        @DefaultValue("15m") Duration alertCooldown,
+
+        /* ---- BigQuery (unbounded-retention analytics sink + cross-app identity linking) ---- */
+
+        /** Escape hatch: disable BigQuery writes without a redeploy if the pipeline misbehaves. */
+        @DefaultValue("true") boolean bigqueryEnabled,
+
+        @DefaultValue("audit") String bigqueryDataset,
+
+        /** Dataset location. Must match at dataset-creation time; changing it later requires a new dataset. */
+        @DefaultValue("US") String bigqueryLocation
 ) {
 }

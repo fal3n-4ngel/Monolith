@@ -85,6 +85,9 @@ tunable without a code change.
 | `AUDIT_RATE_LIMIT_PER_MINUTE` | `120` | Per-IP ingest budget, per instance. `0` disables. |
 | `AUDIT_ALERT_COOLDOWN` | `15m` | Duplicate-alert suppression window. |
 | `AUDIT_HASH_CLIENT_IP` | `false` | Store a SHA-256 pseudonym instead of the raw IP. |
+| `AUDIT_BIGQUERY_ENABLED` | `true` | Escape hatch to disable BigQuery writes without a redeploy. |
+| `AUDIT_BIGQUERY_DATASET` | `audit` | BigQuery dataset for `audit_events` / `identity_links`. |
+| `AUDIT_BIGQUERY_LOCATION` | `US` | Dataset location. Fixed at creation time — see BigQuery setup below. |
 
 **No secret has a default in `application.yml`.** A missing `API_KEY` makes the service reject
 every authenticated request and log an error at startup — it does not fall back to open access.
@@ -118,6 +121,43 @@ script applies; keep the two in sync if you add a new query filter.
 
 ---
 
+## BigQuery setup
+
+Firestore stays the short-retention operational store behind `/api/v1/audit/logs`. BigQuery is
+additive to it, not a replacement — an unbounded-retention analytics sink, and the home of
+cross-app identity linking.
+
+```bash
+./infra/setup-bigquery.sh portfolio-api-505006 US
+```
+
+Idempotent, and creates one dataset (`audit`), two tables, and one view:
+
+1. **`audit_events`** — append-only fact table, one row per postback. Partitioned by
+   `event_timestamp` and clustered by `source_app, event_type`, the same cost discipline as the
+   Firestore composite indexes above. `context` and `metadata` are native `JSON` columns rather
+   than fixed columns, since their shape varies per source app and event type.
+2. **`identity_links`** — upserted (`MERGE`, in `BigQueryAuditWriter`), one row per
+   `(source_app, local_user_id)` ever seen with a verified email. Populated opportunistically:
+   whenever an incoming event's `metadata.email` is present, regardless of `eventType`.
+3. **`identities`** (view) — the actual cross-app **fact linking**: groups `identity_links` by
+   `email` and aggregates every `(source_app, local_user_id)` pair under it. A person's identity
+   is "whatever set of app accounts share a verified email," computed at query time — there is
+   no separately maintained global-user-id table, because email already is the stable one.
+
+**Email is the only matching key. Name is stored for display only, never used to link two
+accounts.** Google Sign-In gives a verified email; names collide across distinct real people and
+would silently merge them. `AUDIT_KNOWN_SOURCE_APPS` already anticipates more than one
+`sourceApp` — until a second app actually posts `metadata.email`, `identity_links` will have
+exactly one row per Continuum user and `identities.app_count` will always read `1`. That's the
+pipeline waiting for a second app, not a broken one.
+
+`eventId` (client-generated, see `lib/audit-postback/client.ts` in Continuum) is used as the
+BigQuery `insertId` on the `audit_events` insert, so a retried or `keepalive`-resent postback
+lands once instead of twice.
+
+---
+
 ## Cost model
 
 The service sits in the Cloud Run and Firestore free tiers under normal personal use. The
@@ -131,6 +171,11 @@ things that could take it out of them, in order:
 4. **Payload size.** `PayloadSanitizer` caps entry count, value length, and nesting depth.
 5. **Log ingestion.** gRPC and Firestore client logging is pinned to `WARN`; at `INFO` the
    Firestore client emits a channel-state line per RPC, which is billed.
+6. **BigQuery streaming inserts.** `BigQueryAuditWriter` uses the plain `insertAll` streaming
+   API rather than the Storage Write API: at this project's volume the difference is pennies,
+   and `insertAll`'s per-row `insertId` gives exact-dedup semantics the Storage Write API's
+   default stream doesn't. If ingest volume ever grows enough for this line item to matter,
+   that's the thing to revisit.
 
 Cold start is the other lever. The image pre-trains a CDS archive at build time, measured at
 roughly 28% off JVM startup (2.48s → 1.82s locally), which matters because `--min-instances=0`

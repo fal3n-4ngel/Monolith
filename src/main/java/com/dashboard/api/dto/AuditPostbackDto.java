@@ -32,6 +32,13 @@ public class AuditPostbackDto {
     @Pattern(regexp = IDENTIFIER_PATTERN, message = "eventType may contain only letters, digits, '.', '-' and '_'")
     private String eventType;
 
+    @Schema(description = "Caller-generated unique ID for this logical event. Used as the "
+            + "BigQuery insertId so retries/keepalive resends dedupe instead of double-counting. "
+            + "Optional: falls back to the server-generated logId if absent.",
+            example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+    @Size(max = 128, message = "eventId must be at most 128 characters")
+    private String eventId;
+
     @Schema(description = "Severity level; unrecognized values degrade to INFO", example = "INFO",
             allowableValues = {"DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"})
     @Size(max = 16)
@@ -68,6 +75,14 @@ public class AuditPostbackDto {
 
     public void setEventType(String eventType) {
         this.eventType = eventType;
+    }
+
+    public String getEventId() {
+        return eventId;
+    }
+
+    public void setEventId(String eventId) {
+        this.eventId = eventId;
     }
 
     public String getSeverity() {

@@ -16,7 +16,8 @@ class OriginValidatorTest {
             Set.of("https://continuum-home.vercel.app", "http://localhost:3000"),
             Set.of("continuum-home"),
             32, 512, 4, false,
-            Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15)));
+            Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15),
+            false, "audit", "US"));
 
     @Test
     void authorizedOriginHeaderIsNotFlagged() {

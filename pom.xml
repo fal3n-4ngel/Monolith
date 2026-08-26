@@ -24,6 +24,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <springdoc.version>2.6.0</springdoc.version>
         <google-cloud-firestore.version>3.29.0</google-cloud-firestore.version>
+        <google-cloud-bigquery.version>2.42.1</google-cloud-bigquery.version>
 
         <!--
           Overridden above the Spring Boot 3.3.5 defaults so the test suite runs on the JDKs
@@ -65,6 +66,13 @@
             <groupId>com.google.cloud</groupId>
             <artifactId>google-cloud-firestore</artifactId>
             <version>${google-cloud-firestore.version}</version>
+        </dependency>
+
+        <!-- Google Cloud BigQuery SDK: unbounded-retention analytics sink + cross-app identity linking -->
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-bigquery</artifactId>
+            <version>${google-cloud-bigquery.version}</version>
         </dependency>
 
         <!-- OpenAPI 3.1 & Swagger UI -->

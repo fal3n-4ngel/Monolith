@@ -1,6 +1,7 @@
 package com.dashboard.api;
 
 import com.dashboard.api.audit.AuditLogWriter;
+import com.dashboard.api.audit.BigQueryAuditWriter;
 import com.dashboard.api.audit.OriginValidator;
 import com.dashboard.api.audit.PayloadSanitizer;
 import com.dashboard.api.config.AuditProperties;
@@ -30,18 +31,21 @@ class AuditPostbackServiceTest {
     private static final AuditProperties PROPS = new AuditProperties(
             Set.of("https://continuum-home.vercel.app"), Set.of("continuum-home"),
             32, 512, 4, false,
-            Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15));
+            Duration.ofDays(90), 50, 200, 120, Duration.ofMinutes(15),
+            false, "audit", "US");
 
     private AuditLogWriter writer;
+    private BigQueryAuditWriter bigQueryWriter;
     private DiscordAlertService alerts;
     private AuditPostbackService service;
 
     @BeforeEach
     void setUp() {
         writer = mock(AuditLogWriter.class);
+        bigQueryWriter = mock(BigQueryAuditWriter.class);
         alerts = mock(DiscordAlertService.class);
         service = new AuditPostbackService(
-                writer, new OriginValidator(PROPS), new PayloadSanitizer(PROPS), alerts, PROPS);
+                writer, bigQueryWriter, new OriginValidator(PROPS), new PayloadSanitizer(PROPS), alerts, PROPS);
     }
 
     private static AuditPostbackDto event(String sourceApp, String eventType) {
@@ -73,6 +77,26 @@ class AuditPostbackServiceTest {
                 .containsEntry("userId", "anonymous")
                 .doesNotContainKey("isUnauthorized");
         assertThat(document).containsKey("expiresAt"); // drives the Firestore TTL policy
+
+        // Same document also fans out to the BigQuery sink, regardless of Firestore outcome.
+        verify(bigQueryWriter).enqueue(document);
+    }
+
+    @Test
+    void clientSuppliedEventIdIsCarriedIntoTheDocument() {
+        AuditPostbackDto dto = event("continuum-home", "USER_SESSION_ACTIVE");
+        dto.setEventId("evt_abc123");
+
+        service.record(dto, RequestContext.EMPTY);
+
+        assertThat(capturePersistedDocument()).containsEntry("eventId", "evt_abc123");
+    }
+
+    @Test
+    void missingEventIdIsNotStamped() {
+        service.record(event("continuum-home", "USER_SESSION_ACTIVE"), RequestContext.EMPTY);
+
+        assertThat(capturePersistedDocument()).doesNotContainKey("eventId");
     }
 
     @Test

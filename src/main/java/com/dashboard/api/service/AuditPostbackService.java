@@ -1,6 +1,7 @@
 package com.dashboard.api.service;
 
 import com.dashboard.api.audit.AuditLogWriter;
+import com.dashboard.api.audit.BigQueryAuditWriter;
 import com.dashboard.api.audit.OriginValidator;
 import com.dashboard.api.audit.PayloadSanitizer;
 import com.dashboard.api.audit.Severity;
@@ -36,17 +37,20 @@ public class AuditPostbackService {
     private static final Duration MAX_CLOCK_DRIFT = Duration.ofHours(24);
 
     private final AuditLogWriter writer;
+    private final BigQueryAuditWriter bigQueryWriter;
     private final OriginValidator originValidator;
     private final PayloadSanitizer sanitizer;
     private final DiscordAlertService discordAlertService;
     private final AuditProperties props;
 
     public AuditPostbackService(AuditLogWriter writer,
+                                BigQueryAuditWriter bigQueryWriter,
                                 OriginValidator originValidator,
                                 PayloadSanitizer sanitizer,
                                 DiscordAlertService discordAlertService,
                                 AuditProperties props) {
         this.writer = writer;
+        this.bigQueryWriter = bigQueryWriter;
         this.originValidator = originValidator;
         this.sanitizer = sanitizer;
         this.discordAlertService = discordAlertService;
@@ -72,6 +76,9 @@ public class AuditPostbackService {
 
         Map<String, Object> document = new LinkedHashMap<>();
         document.put("logId", logId);
+        if (dto.getEventId() != null && !dto.getEventId().isBlank()) {
+            document.put("eventId", dto.getEventId());
+        }
         document.put("sourceApp", dto.getSourceApp());
         document.put("eventType", dto.getEventType());
         document.put("severity", severity.name());
@@ -99,6 +106,7 @@ public class AuditPostbackService {
         writer.enqueue(logId, document);
         // Dispatch while the request still holds an unthrottled CPU (see AuditLogWriter#flush).
         writer.flush();
+        bigQueryWriter.enqueue(document);
 
         if (verdict.stolenBrand()) {
             log.warn("[Audit] Unauthorized origin [{}] via {} claiming sourceApp [{}] (log {})",

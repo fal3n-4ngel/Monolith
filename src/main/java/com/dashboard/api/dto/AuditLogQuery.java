@@ -11,12 +11,8 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * The validated shape of a {@code GET /audit/logs} request.
- *
- * <p>Every filter is checked against the same allowlists the ingest path uses ({@link SourceApp},
- * {@link DomainEventType}), so an unknown app, domain, or event type is a {@code 400} here rather
- * than a query that quietly matches nothing. Nothing in here decides <i>scope</i> — that comes
- * from the authenticated credential in {@code AuditLogService}.
+ * A validated {@code GET /audit/logs} request. Filters are checked against the ingest allowlists
+ * ({@link SourceApp}, {@link DomainEventType}); scope is decided elsewhere, from the credential.
  */
 public record AuditLogQuery(
         Optional<SourceApp> sourceApp,

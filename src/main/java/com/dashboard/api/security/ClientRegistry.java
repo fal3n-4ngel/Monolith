@@ -16,35 +16,21 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The checked-in list of API credentials and the app each may read — loaded from
- * {@code clients.json} on the classpath (override with {@code monolith.clients-file}).
- *
- * <p>Deliberately holds <b>no secret values</b>. Each entry has a {@code readScope} of
- * {@code all}, {@code none}, or a registered {@code sourceApp} id, and its key is resolved at
- * startup as follows:
- * <ul>
- *   <li>if {@code keyProperty} is set — from that Spring property (e.g. the owner's
- *       {@code dashboard.api-key} &larr; {@code API_KEY});</li>
- *   <li>otherwise — from the aggregated {@code MONOLITH_CLIENT_KEYS} secret, keyed by
- *       {@code name} (see {@link ClientKeyMap}).</li>
- * </ul>
- * A bad scope, a duplicate name, or a missing file fails the server at startup rather than
- * silently mis-scoping a caller.
- *
- * <p>Onboarding a new client is one entry here plus its token in {@code MONOLITH_CLIENT_KEYS} —
- * no new Secret Manager secret, no code change.
+ * Registered API credentials with their read scope and report allotment, from {@code clients.json}.
+ * Holds no secret values: {@code keyProperty} names a Spring property, or the key is looked up by
+ * {@code name} in the {@code MONOLITH_CLIENT_KEYS} secret. A bad scope, duplicate name, or missing
+ * file fails startup.
  */
 @Component
 public class ClientRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(ClientRegistry.class);
 
-    /**
-     * One registry row. {@code keyProperty}, when present, names a Spring property (never a key
-     * value); when absent, the key comes from {@code MONOLITH_CLIENT_KEYS} under {@code name}.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record ClientDefinition(String name, String keyProperty, String readScope) {
+    public record ClientDefinition(String name, String keyProperty, String readScope, List<String> reports) {
+        public ClientDefinition {
+            reports = reports == null ? List.of() : List.copyOf(reports);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -67,11 +53,20 @@ public class ClientRegistry {
             throw new IllegalStateException("Could not read client registry at '" + location + "'", e);
         }
         validate();
-        log.info("[Auth] Loaded {} registered client(s) from '{}'", clients.size(), location);
+        log.info("[Auth] Loaded {} client(s) from '{}'", clients.size(), location);
     }
 
     public List<ClientDefinition> clients() {
         return clients;
+    }
+
+    public List<String> reportsFor(String clientName) {
+        for (ClientDefinition client : clients) {
+            if (client.name().equals(clientName)) {
+                return client.reports();
+            }
+        }
+        return List.of();
     }
 
     private void validate() {
@@ -83,7 +78,6 @@ public class ClientRegistry {
             if (!seen.add(client.name())) {
                 throw new IllegalStateException("Client registry has a duplicate name: '" + client.name() + "'");
             }
-            // Throws IllegalStateException on an unrecognized scope — fail fast at startup.
             AuthenticatedClient.fromScope(client.name(), client.readScope());
         }
     }

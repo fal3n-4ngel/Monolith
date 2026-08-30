@@ -55,10 +55,7 @@ public enum DomainEventType {
         return action;
     }
 
-    /**
-     * The distinct domain names across every event type — the allowlist for the {@code ?domain=}
-     * filter on the read path, kept in step with routing automatically.
-     */
+    /** Distinct domain names — the allowlist for the {@code ?domain=} read filter. */
     public static Set<String> domains() {
         Set<String> all = new LinkedHashSet<>();
         for (DomainEventType type : values()) {

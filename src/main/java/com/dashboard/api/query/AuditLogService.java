@@ -16,16 +16,9 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Read path for domain events. Beyond running the query, its job is the security boundary: the
- * {@code source_app} a caller's results are confined to comes from the authenticated credential,
- * never from a request parameter.
- *
- * <ul>
- *   <li>A credential <b>bound to an app</b> can only ever read that app. Passing {@code ?sourceApp=}
- *       for a different app is a 403, not a silently ignored hint.</li>
- *   <li>A <b>cross-app</b> credential reads every app by default, or one app if it asks.</li>
- *   <li>A credential with <b>no read scope</b> gets a 403 regardless of parameters.</li>
- * </ul>
+ * Read path for domain events. The {@code source_app} results are confined to comes from the
+ * authenticated credential, not a request parameter: a bound credential asking for another app
+ * is a 403.
  */
 @Service
 public class AuditLogService {
@@ -71,7 +64,7 @@ public class AuditLogService {
 
     private Optional<SourceApp> resolveScope(AuthenticatedClient client, Optional<SourceApp> requested) {
         if (client.isCrossApp()) {
-            return requested; // empty => every app; present => that one app
+            return requested;
         }
         if (client.boundApp().isEmpty()) {
             throw new ForbiddenScopeException("this credential has no audit-log read access");

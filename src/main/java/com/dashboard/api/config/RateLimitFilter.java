@@ -29,8 +29,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li>A per-credential budget on {@code /postback}, independent of source IP — a leaked key
  *       replayed from rotating IPs still hits this ceiling, which per-IP limiting alone would
  *       miss.</li>
- *   <li>A tighter per-IP <i>and</i> per-credential budget on {@code GET /audit/logs}: a read is
- *       a BigQuery scan, so it costs more than an ingest and deserves a lower ceiling.</li>
+ *   <li>A tighter per-IP <i>and</i> per-credential budget on the read endpoints ({@code GET
+ *       /audit/logs}, {@code /reports}): each runs a BigQuery job, so it deserves a lower
+ *       ceiling than an ingest.</li>
  * </ol>
  *
  * <p>Enforcement is per Cloud Run instance and in-memory, so the effective global ceiling is
@@ -74,7 +75,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         String ip = ClientIpResolver.resolve(request);
         String uri = request.getRequestURI();
         boolean isPostback = uri.endsWith("/postback");
-        boolean isAuditQuery = "GET".equalsIgnoreCase(request.getMethod()) && uri.contains("/audit/logs");
+        // Both cost a BigQuery job: the audit read, and running a report.
+        boolean isReadQuery = ("GET".equalsIgnoreCase(request.getMethod()) && uri.contains("/audit/logs"))
+                || uri.contains("/reports");
 
         if (globalLimitPerMinute > 0 && !isWithinBudget("ip:" + ip, globalLimitPerMinute)) {
             log.warn("[RateLimit] Rejected {} from [{}] over global {}/min", uri, ip, globalLimitPerMinute);
@@ -82,16 +85,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (isAuditQuery && readLimitPerMinute > 0) {
+        if (isReadQuery && readLimitPerMinute > 0) {
             if (!isWithinBudget("query-ip:" + ip, readLimitPerMinute)) {
-                log.warn("[RateLimit] Rejected audit query from [{}] over {}/min", ip, readLimitPerMinute);
+                log.warn("[RateLimit] Rejected read query {} from [{}] over {}/min", uri, ip, readLimitPerMinute);
                 reject(response, "Query rate limit exceeded. Retry after 60s.");
                 return;
             }
 
             String credentialBucket = "query-key:" + fingerprint(request.getHeader("Authorization"));
             if (!isWithinBudget(credentialBucket, readLimitPerMinute)) {
-                log.warn("[RateLimit] Rejected audit query for credential [{}] over {}/min", credentialBucket, readLimitPerMinute);
+                log.warn("[RateLimit] Rejected read query for credential [{}] over {}/min", credentialBucket, readLimitPerMinute);
                 reject(response, "Query rate limit exceeded for this credential. Retry after 60s.");
                 return;
             }

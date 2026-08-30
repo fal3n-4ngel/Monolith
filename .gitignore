@@ -37,7 +37,9 @@ setup-secrets.ps1
 *.json
 !infra/*.json
 !src/main/resources/clients.json
+!src/main/resources/reports.json
 !src/test/resources/clients-*.json
+!src/test/resources/reports-*.json
 service-account.json
 key.json
 

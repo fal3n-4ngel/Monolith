@@ -15,6 +15,8 @@ each to its per-app, per-domain BigQuery table, and post a visible confirmation 
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/v1/events/postback` | **bearer** | Domain-event ingest. Rate limited per IP. Returns `202 Accepted`. |
 | `GET`  | `/api/v1/audit/logs` | **bearer** | Read domain-event history, newest first. Confined to the calling credential's app. |
+| `GET`  | `/api/v1/reports` | **bearer** | List the admin-authored reports this credential may run. |
+| `POST` | `/api/v1/reports/{id}/run` | **bearer** | Run one report; returns `text/csv`. Scoped per credential. |
 | `GET`  | `/health`, `/` | none | Liveness. Touches no backend. |
 | `GET`  | `/swagger-ui.html` | none | Interactive API docs. |
 
@@ -102,6 +104,41 @@ each one is a BigQuery scan.
 
 ---
 
+## Reports
+
+Admin-authored named queries, run on demand and returned as CSV. The catalog is the checked-in
+[`reports.json`](src/main/resources/reports.json) — each entry is a single parameterised
+`SELECT`/`WITH`:
+
+```json
+{ "id": "activity-summary", "name": "Activity summary by event type",
+  "params": [{ "name": "from", "type": "timestamp", "required": true }],
+  "sql": "SELECT event_type, COUNT(*) AS events FROM {{all_events}} WHERE source_app = @caller_app AND occurred_at >= @from GROUP BY event_type" }
+```
+
+- `@param` values are **bound**, never concatenated. `{{all_events}}` expands to the FQN of the
+  `events.all_events` view. `@caller_app`, when present, is the calling credential's bound
+  `sourceApp` — one definition serves every client, each seeing only its rows; a cross-app
+  credential passes `callerApp` in the run body.
+- **Allotment** is per credential in `clients.json` (`"reports": ["activity-summary", …]`, or
+  `["*"]`). A cross-app credential may run any report; a scoped one only its list.
+- Guards: `SELECT`-only single statement (enforced at startup — a non-`SELECT` or a stray `;`
+  fails the boot), `REPORTS_MAX_BYTES_BILLED`, a job timeout, and `REPORTS_MAX_ROWS` (the CSV
+  carries `X-Report-Truncated: true` past it). Shares the read rate limit.
+
+```bash
+curl -s https://monolith-postbacks.adithyakrishnan.com/api/v1/reports \
+  -H "Authorization: Bearer $KEY"
+
+curl -s -X POST https://monolith-postbacks.adithyakrishnan.com/api/v1/reports/activity-summary/run \
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+  -d '{"from":"2026-08-01T00:00:00Z"}' -o activity-summary.csv
+```
+
+Adding a report is an entry in `reports.json` + a deploy. No arbitrary SQL crosses the wire.
+
+---
+
 ## Why this is authenticated
 
 Unlike a browser-facing endpoint, a domain event is only ever emitted by a source app's own
@@ -126,7 +163,10 @@ continuity with already-deployed config) so it's tunable without a code change.
 | `GCP_PROJECT_ID` | `portfolio-api-505006` | BigQuery project. |
 | `AUDIT_RATE_LIMIT_PER_MINUTE` | `120` | Per-IP *and* per-credential postback budget, per instance. A leaked key replayed from rotating IPs still hits the per-credential ceiling. `0` disables. |
 | `AUDIT_GLOBAL_RATE_LIMIT_PER_MINUTE` | `300` | Looser per-IP budget across every endpoint (health, swagger, actuator included), per instance — a backstop in front of the tighter postback-specific budget above. `0` disables. |
-| `MONOLITH_CLIENTS_FILE` | `classpath:clients.json` | Location of the credential/read-scope registry. Point at an external file to change scopes without a rebuild. |
+| `MONOLITH_CLIENTS_FILE` | `classpath:clients.json` | Location of the credential/read-scope/report-allotment registry. Point at an external file to change it without a rebuild. |
+| `MONOLITH_REPORTS_FILE` | `classpath:reports.json` | Location of the report catalog. |
+| `REPORTS_MAX_BYTES_BILLED` / `REPORTS_MAX_ROWS` | `200000000` / `50000` | Per-run BigQuery scan cap and row cap for `/reports/{id}/run`. |
+| `REPORTS_TIMEOUT_MILLIS` | `30000` | Per-run BigQuery job timeout. |
 | `AUDIT_READ_RATE_LIMIT_PER_MINUTE` | `30` | Per-IP *and* per-credential budget for `/audit/logs`, per instance. Lower than ingest — a read is a BigQuery scan. `0` disables. |
 | `AUDIT_QUERY_LOOKBACK_DAYS` | `30` | With no `?from`, how far back `/audit/logs` scans. Bounds query cost. |
 | `AUDIT_QUERY_DEFAULT_LIMIT` / `AUDIT_QUERY_MAX_LIMIT` | `50` / `200` | Default and hard-capped row count for `/audit/logs`. |

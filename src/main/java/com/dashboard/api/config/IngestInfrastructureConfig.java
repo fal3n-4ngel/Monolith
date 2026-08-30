@@ -14,7 +14,7 @@ import java.util.concurrent.ThreadPoolExecutor;
  */
 @Configuration
 @EnableAsync
-@EnableConfigurationProperties(AuditProperties.class)
+@EnableConfigurationProperties({AuditProperties.class, ReportProperties.class})
 public class IngestInfrastructureConfig {
 
     @Bean("bigqueryExecutor")

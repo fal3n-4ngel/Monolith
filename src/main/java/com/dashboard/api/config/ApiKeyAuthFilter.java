@@ -28,20 +28,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Authenticates protected endpoints with either a static bearer API key or a Google ID token,
- * and resolves which client the credential belongs to.
- *
- * <p><b>Fails closed.</b> A missing API key does not fall back to open access — combined with
- * Cloud Run's {@code --allow-unauthenticated}, that would have meant a single failed secret
- * mount silently exposing every authenticated endpoint to the internet. A misconfigured server
- * rejects requests instead, and says so loudly at startup.
- *
- * <p><b>Credentials carry a read scope.</b> The ingest path treats every valid key alike, but
- * the read path ({@code GET /audit/logs}) confines each key to the app it is bound to. The
- * binding lives in the checked-in {@link ClientRegistry} ({@code clients.json}); the key itself
- * comes either from a named property (the owner's {@code API_KEY}) or from the aggregated
- * {@link ClientKeyMap} ({@code MONOLITH_CLIENT_KEYS}) so new apps need no new secret. See
- * {@link AuthenticatedClient}.
+ * Authenticates a bearer API key or an allow-listed Google ID token and resolves it to an
+ * {@link AuthenticatedClient}. Fails closed: with no key configured it rejects everything and
+ * logs an error at startup rather than falling open.
  */
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
@@ -112,7 +101,6 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
-    /** @return the client the token authenticates as, or {@code null} if the token is not valid. */
     private AuthenticatedClient authenticate(String token) {
         for (KeyBinding binding : keyBindings) {
             if (constantTimeEquals(binding.token(), token)) {

@@ -1,0 +1,6 @@
+{
+  "reports": [
+    { "id": "ok", "name": "Fine", "sql": "SELECT 1" },
+    { "id": "danger", "name": "Not a read", "sql": "DELETE FROM {{all_events}} WHERE 1=1" }
+  ]
+}

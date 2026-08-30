@@ -1,0 +1,35 @@
+{
+  "_comment": "Report catalog. Each sql is one parameterised SELECT/WITH. @params are bound; {{all_events}} expands to the view; @caller_app is the caller's app (cross-app credentials pass callerApp). Param types: string | timestamp | date | int64 | bool. Allotment is per client in clients.json.",
+  "reports": [
+    {
+      "id": "activity-summary",
+      "name": "Activity summary by event type",
+      "description": "Event and item counts per event type / action for one app over a date range.",
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT event_type, action, COUNT(*) AS events, SUM(item_count) AS items, MIN(occurred_at) AS first_seen, MAX(occurred_at) AS last_seen FROM {{all_events}} WHERE source_app = @caller_app AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY event_type, action ORDER BY events DESC"
+    },
+    {
+      "id": "daily-volume",
+      "name": "Daily event volume",
+      "description": "Events per calendar day for one app over a date range.",
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT DATE(occurred_at) AS day, COUNT(*) AS events, SUM(item_count) AS items FROM {{all_events}} WHERE source_app = @caller_app AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY day ORDER BY day"
+    },
+    {
+      "id": "cross-app-volume",
+      "name": "Cross-app daily volume",
+      "description": "Events per day per app across every integrated app. Owner / cross-app credentials only.",
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT DATE(occurred_at) AS day, source_app, domain, COUNT(*) AS events FROM {{all_events}} WHERE occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY day, source_app, domain ORDER BY day, source_app, domain"
+    }
+  ]
+}

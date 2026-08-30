@@ -54,13 +54,17 @@ dashboard:
   gcp:
     project-id: ${GCP_PROJECT_ID:portfolio-api-505006}
 
-# Client identities and their read scope live in the checked-in registry
-# (src/main/resources/clients.json) — no secrets in it, just names + scope. Every client key
-# except the owner's API_KEY comes from ONE aggregated secret, MONOLITH_CLIENT_KEYS, a
-# {"name":"token"} JSON map (or name=token CSV). Adding an app is a new version of that one
-# secret, never a new secret. See com.dashboard.api.security.ClientKeyMap / ClientRegistry.
+# Client registry (names + read scope + report allotment; no secrets). Non-owner keys come from
+# the aggregated MONOLITH_CLIENT_KEYS secret. See com.dashboard.api.security.ClientRegistry.
 monolith:
   clients-file: ${MONOLITH_CLIENTS_FILE:classpath:clients.json}
+
+# Report catalog and per-run cost guards. See com.dashboard.api.reports.ReportRegistry.
+reports:
+  file: ${MONOLITH_REPORTS_FILE:classpath:reports.json}
+  max-bytes-billed: ${REPORTS_MAX_BYTES_BILLED:200000000}
+  timeout-millis: ${REPORTS_TIMEOUT_MILLIS:30000}
+  max-rows: ${REPORTS_MAX_ROWS:50000}
 
 # Secret. Must be injected from Google Secret Manager; never commit a default here.
 discord:

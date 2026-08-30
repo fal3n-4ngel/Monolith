@@ -28,15 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Runs the audit-log read as a single parameterised BigQuery query against the {@code all_events}
- * view.
- *
- * <p>Every filter is a bound named parameter, never string-concatenated — the same instinct as
- * the ingest path resolving tables from an enum instead of a caller string. The
- * {@code source_app} predicate is set from the authenticated credential upstream
- * ({@link AuditLogService}); this class binds whatever scope it is handed and nothing more.
- */
+/** Runs the audit-log read as one parameterised query against the {@code all_events} view. */
 @Component
 public class BigQueryAuditLogRepository {
 
@@ -55,10 +47,7 @@ public class BigQueryAuditLogRepository {
         this.projectId = projectId == null ? "" : projectId.trim();
     }
 
-    /**
-     * Already-scoped, already-validated read criteria. {@code sourceApp} empty means "every app"
-     * — only reachable for a cross-app credential.
-     */
+    /** Already-scoped criteria; {@code sourceApp} empty means every app. */
     public record Criteria(
             Optional<SourceApp> sourceApp,
             String userId,
@@ -147,8 +136,7 @@ public class BigQueryAuditLogRepository {
             if (location == null || location.isBlank()) {
                 return bigQuery.query(config);
             }
-            // An explicit job id is required to pin the job's location; give it a real name so
-            // the client never has to invent one.
+            // A job id is required to pin the query's location.
             JobId jobId = JobId.newBuilder()
                     .setLocation(location.trim())
                     .setJob("audit_read_" + java.util.UUID.randomUUID().toString().replace("-", ""))

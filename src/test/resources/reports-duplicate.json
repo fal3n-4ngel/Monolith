@@ -1,0 +1,6 @@
+{
+  "reports": [
+    { "id": "activity", "name": "One", "sql": "SELECT 1" },
+    { "id": "activity", "name": "Two", "sql": "SELECT 2" }
+  ]
+}

@@ -43,7 +43,6 @@ public class OpenApiConfig {
                                         .type(SecurityScheme.Type.HTTP)
                                         .scheme("bearer")
                                         .bearerFormat("API_KEY")
-                                        .description("API key from Secret Manager (API_KEY / CONTINUUM_API_KEY), "
-                                                + "or a Google ID token for the allow-listed identity.")));
+                                        .description("A client API key, or a Google ID token for the allow-listed identity.")));
     }
 }

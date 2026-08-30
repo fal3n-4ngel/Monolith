@@ -1,0 +1,36 @@
+meta {
+  name: Query Events
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/audit/logs?userId=usr_123&domain=expenses&limit=50
+  body: none
+  auth: inherit
+}
+
+params:query {
+  userId: usr_123
+  domain: expenses
+  limit: 50
+  ~sourceApp: continuum-home
+  ~eventType: EXPENSE_CREATED
+  ~from: 2026-08-01T00:00:00Z
+  ~before: 2026-08-30T00:00:00Z
+}
+
+headers {
+  Content-Type: application/json
+}
+
+docs {
+  Reads domain-event history for the calling credential's app, newest first.
+
+  The `source_app` filter is fixed server-side from the bearer key — a client key
+  passing `sourceApp` for another app gets 403. Only a cross-app credential
+  (API_KEY / allow-listed Google identity) may set `sourceApp`.
+
+  Response: { scope, count, results[], nextBefore }. Paginate by sending the
+  previous `nextBefore` back as `before`.
+}

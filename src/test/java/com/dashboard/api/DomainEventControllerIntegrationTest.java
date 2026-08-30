@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(properties = {"continuum.api-key=expenses_adi_secret_9k2mXp7vLqR4"})
+@SpringBootTest(properties = {"MONOLITH_CLIENT_KEYS=continuum=expenses_adi_secret_9k2mXp7vLqR4"})
 @AutoConfigureMockMvc
 class DomainEventControllerIntegrationTest {
 

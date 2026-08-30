@@ -130,7 +130,45 @@ def send_domain_event(event_type: str, user_id: str, user_email: str, payload: d
 
 ---
 
+## Step 4: Read Your Events Back
+
+### 🔎 Query Endpoint
+- **URL:** `GET https://monolith-postbacks.adithyakrishnan.com/api/v1/audit/logs`
+- **Header:** `Authorization: Bearer <MONOLITH_API_KEY>` — the same key you post with.
+
+```bash
+curl -s -G https://monolith-postbacks.adithyakrishnan.com/api/v1/audit/logs \
+  -H "Authorization: Bearer $MONOLITH_API_KEY" \
+  --data-urlencode 'userId=usr_99182' \
+  --data-urlencode 'eventType=TASK_COMPLETED' \
+  --data-urlencode 'limit=100'
+```
+
+```json
+{ "scope": "my-task-app", "count": 1,
+  "results": [
+    { "domain": "tasks", "eventId": "a7b8c9d0-…", "sourceApp": "my-task-app",
+      "userId": "usr_99182", "eventType": "TASK_COMPLETED", "action": "CREATE",
+      "entityId": "task_4412", "itemCount": 1,
+      "occurredAt": "2026-08-30T12:00:00Z", "receivedAt": "2026-08-30T12:00:01Z",
+      "payload": { "title": "Complete Monolith Integration" } } ],
+  "nextBefore": "2026-08-30T12:00:00Z" }
+```
+
+| Param | Notes |
+| :--- | :--- |
+| `userId` | Acting user id as your app knows it. |
+| `domain` / `eventType` | Checked against the same allowlists as ingest. |
+| `from` / `before` | `occurred_at` bounds (ISO-8601 or epoch millis). No `from` &rarr; last 30 days only. |
+| `limit` | Default 50, max 200. |
+| `sourceApp` | **Not for app keys** — your results are fixed to your own app. Passing another app's id is a **403**. |
+
+Paginate by passing the previous response's `nextBefore` as `before`.
+
+---
+
 ## 🔐 Security & Fails-Closed Policy
 - **Fails-Closed Ingestion:** Unregistered `sourceApp` or `eventType` values return HTTP **400 Bad Request** (`"unknown_source_app"` / `"unknown_event_type"`).
 - **Authentication:** Unauthenticated requests return HTTP **401 Unauthorized**.
 - **Non-Blocking Delivery:** Postbacks return HTTP **202 Accepted** immediately; BigQuery writes and Discord alerts run on async background threads.
+- **Read Isolation:** `GET /api/v1/audit/logs` fixes the `source_app` filter to the calling key's app. Cross-app reads require a dedicated cross-app credential; an app key asking for another app gets HTTP **403 Forbidden**. Reads are rate limited per key (30/min default), independently of ingest.

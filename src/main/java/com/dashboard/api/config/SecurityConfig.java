@@ -1,8 +1,11 @@
 package com.dashboard.api.config;
 
+import com.dashboard.api.security.ClientKeyMap;
+import com.dashboard.api.security.ClientRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -29,7 +32,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    ApiKeyAuthFilter apiKeyAuthFilter,
-                                                   PostbackRateLimitFilter rateLimitFilter) throws Exception {
+                                                   RateLimitFilter rateLimitFilter) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -44,15 +47,16 @@ public class SecurityConfig {
     }
 
     @Bean
-    public ApiKeyAuthFilter apiKeyAuthFilter(
-            @Value("${dashboard.api-key:}") String dashboardApiKey,
-            @Value("${continuum.api-key:}") String continuumApiKey,
-            @Value("${dashboard.allowed-email:}") String allowedEmail) {
-        return new ApiKeyAuthFilter(dashboardApiKey, continuumApiKey, allowedEmail);
+    public ApiKeyAuthFilter apiKeyAuthFilter(Environment environment,
+                                             ClientRegistry clientRegistry,
+                                             ClientKeyMap clientKeyMap,
+                                             @Value("${dashboard.allowed-email:}") String allowedEmail) {
+        return new ApiKeyAuthFilter(environment, clientRegistry, clientKeyMap, allowedEmail);
     }
 
     @Bean
-    public PostbackRateLimitFilter postbackRateLimitFilter(AuditProperties props) {
-        return new PostbackRateLimitFilter(props.rateLimitPerMinute());
+    public RateLimitFilter rateLimitFilter(AuditProperties props) {
+        return new RateLimitFilter(props.globalRateLimitPerMinute(), props.rateLimitPerMinute(),
+                props.readRateLimitPerMinute());
     }
 }

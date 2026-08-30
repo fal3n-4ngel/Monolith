@@ -11,7 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PayloadSanitizerTest {
 
-    private static final AuditProperties PROPS = new AuditProperties(3, 10, 2, 120, false, "events", "US");
+    private static final AuditProperties PROPS =
+            new AuditProperties(3, 10, 2, 120, 300, false, "events", "US", 50, 200, 30, 30, 100_000_000L);
     private static final PayloadSanitizer SANITIZER = new PayloadSanitizer(PROPS);
 
     @Test

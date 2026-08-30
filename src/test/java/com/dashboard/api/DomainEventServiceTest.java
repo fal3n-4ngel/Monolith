@@ -23,7 +23,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 class DomainEventServiceTest {
 
-    private static final AuditProperties PROPS = new AuditProperties(32, 512, 4, 120, false, "events", "US");
+    private static final AuditProperties PROPS =
+            new AuditProperties(32, 512, 4, 120, 300, false, "events", "US", 50, 200, 30, 30, 100_000_000L);
 
     private DomainEventWriter writer;
     private DomainEventService service;

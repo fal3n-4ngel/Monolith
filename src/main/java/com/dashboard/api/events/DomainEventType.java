@@ -1,7 +1,9 @@
 package com.dashboard.api.events;
 
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The allowlist of domain events this service accepts, and the only place that decides which
@@ -51,6 +53,18 @@ public enum DomainEventType {
 
     public Action action() {
         return action;
+    }
+
+    /**
+     * The distinct domain names across every event type — the allowlist for the {@code ?domain=}
+     * filter on the read path, kept in step with routing automatically.
+     */
+    public static Set<String> domains() {
+        Set<String> all = new LinkedHashSet<>();
+        for (DomainEventType type : values()) {
+            all.add(type.domain);
+        }
+        return all;
     }
 
     public static Optional<DomainEventType> parse(String raw) {

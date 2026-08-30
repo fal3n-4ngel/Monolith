@@ -54,8 +54,13 @@ dashboard:
   gcp:
     project-id: ${GCP_PROJECT_ID:portfolio-api-505006}
 
-continuum:
-  api-key: ${CONTINUUM_API_KEY:}
+# Client identities and their read scope live in the checked-in registry
+# (src/main/resources/clients.json) — no secrets in it, just names + scope. Every client key
+# except the owner's API_KEY comes from ONE aggregated secret, MONOLITH_CLIENT_KEYS, a
+# {"name":"token"} JSON map (or name=token CSV). Adding an app is a new version of that one
+# secret, never a new secret. See com.dashboard.api.security.ClientKeyMap / ClientRegistry.
+monolith:
+  clients-file: ${MONOLITH_CLIENTS_FILE:classpath:clients.json}
 
 # Secret. Must be injected from Google Secret Manager; never commit a default here.
 discord:
@@ -69,6 +74,14 @@ audit:
   max-value-length: 512
   max-map-depth: 4
   rate-limit-per-minute: ${AUDIT_RATE_LIMIT_PER_MINUTE:120}
+  global-rate-limit-per-minute: ${AUDIT_GLOBAL_RATE_LIMIT_PER_MINUTE:300}
+  # Read path (GET /audit/logs). A read is a BigQuery scan, hence the tighter rate limit and
+  # the lookback window / bytes-billed cap that bound how much any one query can cost.
+  read-rate-limit-per-minute: ${AUDIT_READ_RATE_LIMIT_PER_MINUTE:30}
+  query-default-limit: ${AUDIT_QUERY_DEFAULT_LIMIT:50}
+  query-max-limit: ${AUDIT_QUERY_MAX_LIMIT:200}
+  query-lookback-days: ${AUDIT_QUERY_LOOKBACK_DAYS:30}
+  query-max-bytes-billed: ${AUDIT_QUERY_MAX_BYTES_BILLED:100000000}
 
 springdoc:
   api-docs:

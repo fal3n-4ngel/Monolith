@@ -1,5 +1,8 @@
 package com.dashboard.api.config;
 
+import com.dashboard.api.security.AuthenticatedClient;
+import com.dashboard.api.security.ClientKeyMap;
+import com.dashboard.api.security.ClientRegistry;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
@@ -11,6 +14,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -20,17 +24,24 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
- * Authenticates protected endpoints with either a static bearer API key or a Google ID token.
+ * Authenticates protected endpoints with either a static bearer API key or a Google ID token,
+ * and resolves which client the credential belongs to.
  *
  * <p><b>Fails closed.</b> A missing API key does not fall back to open access — combined with
  * Cloud Run's {@code --allow-unauthenticated}, that would have meant a single failed secret
  * mount silently exposing every authenticated endpoint to the internet. A misconfigured server
  * rejects requests instead, and says so loudly at startup.
+ *
+ * <p><b>Credentials carry a read scope.</b> The ingest path treats every valid key alike, but
+ * the read path ({@code GET /audit/logs}) confines each key to the app it is bound to. The
+ * binding lives in the checked-in {@link ClientRegistry} ({@code clients.json}); the key itself
+ * comes either from a named property (the owner's {@code API_KEY}) or from the aggregated
+ * {@link ClientKeyMap} ({@code MONOLITH_CLIENT_KEYS}) so new apps need no new secret. See
+ * {@link AuthenticatedClient}.
  */
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
@@ -41,23 +52,37 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             "/swagger-ui", "/v3/api-docs", "/actuator");
     private static final List<String> PUBLIC_EXACT = List.of("/", "/health", "/error");
 
-    private final Set<String> validApiKeys;
+    private record KeyBinding(String token, AuthenticatedClient client) {
+    }
+
+    private final List<KeyBinding> keyBindings;
     private final String allowedEmail;
     private final GoogleIdTokenVerifier googleVerifier;
 
-    public ApiKeyAuthFilter(@Value("${dashboard.api-key:}") String dashboardApiKey,
-                            @Value("${continuum.api-key:}") String continuumApiKey,
+    public ApiKeyAuthFilter(Environment environment,
+                            ClientRegistry clientRegistry,
+                            ClientKeyMap clientKeyMap,
                             @Value("${dashboard.allowed-email:}") String allowedEmail) {
-        this.validApiKeys = new LinkedHashSet<>();
-        addIfPresent(this.validApiKeys, dashboardApiKey);
-        addIfPresent(this.validApiKeys, continuumApiKey);
+        this.keyBindings = new ArrayList<>();
+        for (ClientRegistry.ClientDefinition client : clientRegistry.clients()) {
+            String source = hasText(client.keyProperty()) ? client.keyProperty() : "MONOLITH_CLIENT_KEYS[" + client.name() + "]";
+            String token = hasText(client.keyProperty())
+                    ? environment.getProperty(client.keyProperty())
+                    : clientKeyMap.keyFor(client.name()).orElse(null);
+            if (token == null || token.isBlank()) {
+                log.warn("[Auth] Registered client '{}' has no key set ({}); it cannot authenticate.",
+                        client.name(), source);
+                continue;
+            }
+            addKey(token, AuthenticatedClient.fromScope(client.name(), client.readScope()));
+        }
         this.allowedEmail = allowedEmail == null ? "" : allowedEmail.trim();
 
         this.googleVerifier = new GoogleIdTokenVerifier.Builder(
                 new NetHttpTransport(), GsonFactory.getDefaultInstance()).build();
 
-        if (this.validApiKeys.isEmpty()) {
-            log.error("[Auth] No API key configured (API_KEY / CONTINUUM_API_KEY). "
+        if (this.keyBindings.isEmpty()) {
+            log.error("[Auth] No registered client has a key configured. "
                     + "Authenticated endpoints will reject every request until one is set.");
         }
     }
@@ -74,30 +99,30 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String token = bearerToken(request);
-        String principal = token == null ? null : authenticate(token);
+        AuthenticatedClient client = token == null ? null : authenticate(token);
 
-        if (principal == null) {
+        if (client == null) {
             reject(response);
             return;
         }
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
-                        principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+                        client, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
         chain.doFilter(request, response);
     }
 
-    /** @return the authenticated principal name, or {@code null} if the token is not valid. */
-    private String authenticate(String token) {
-        for (String candidate : validApiKeys) {
-            if (constantTimeEquals(candidate, token)) {
-                return "api-key-client";
+    /** @return the client the token authenticates as, or {@code null} if the token is not valid. */
+    private AuthenticatedClient authenticate(String token) {
+        for (KeyBinding binding : keyBindings) {
+            if (constantTimeEquals(binding.token(), token)) {
+                return binding.client();
             }
         }
         return verifyGoogleIdToken(token);
     }
 
-    private String verifyGoogleIdToken(String token) {
+    private AuthenticatedClient verifyGoogleIdToken(String token) {
         try {
             GoogleIdToken idToken = googleVerifier.verify(token);
             if (idToken == null) {
@@ -113,7 +138,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
                 log.warn("[Auth] Rejected valid Google token for non-allowed identity");
                 return null;
             }
-            return email;
+            return AuthenticatedClient.crossApp(email);
         } catch (Exception e) {
             log.debug("[Auth] Google ID token verification failed", e);
             return null;
@@ -149,9 +174,20 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
                 actual.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static void addIfPresent(Set<String> target, String value) {
-        if (value != null && !value.isBlank()) {
-            target.add(value.trim());
+    private static boolean hasText(String s) {
+        return s != null && !s.isBlank();
+    }
+
+    private void addKey(String token, AuthenticatedClient client) {
+        if (token == null || token.isBlank()) {
+            return;
         }
+        String trimmed = token.trim();
+        for (KeyBinding existing : keyBindings) {
+            if (existing.token().equals(trimmed)) {
+                return; // same string handed to two slots — first registration wins
+            }
+        }
+        keyBindings.add(new KeyBinding(trimmed, client));
     }
 }

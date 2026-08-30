@@ -21,14 +21,15 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Monolith Audit & Telemetry API")
                         .description("""
-                                Central audit log receiver for Continuum Home and integrated personal applications.
+                                Central domain-event store for Continuum Home and integrated personal applications.
 
-                                **Ingest** (`POST /api/v1/audit/postback`) is unauthenticated and rate limited.
-                                It returns `202 Accepted` — events are persisted asynchronously, so the response
-                                is an acknowledgement, not a durability guarantee.
+                                **Ingest** (`POST /api/v1/events/postback`) requires a bearer API key and is
+                                rate limited. It returns `202 Accepted` — events persist asynchronously, so the
+                                response is an acknowledgement, not a durability guarantee.
 
                                 **Query** (`GET /api/v1/audit/logs`) requires a bearer API key or an allow-listed
-                                Google ID token.""")
+                                Google ID token, and confines each key to the app it is bound to in the
+                                `clients.json` registry.""")
                         .version("3.0.0")
                         .contact(new Contact()
                                 .name("Dashboard Admin")

@@ -41,7 +41,36 @@ All domain tables share a standardized 10-column schema partitioned by `occurred
 
 ## 2. 🔍 Querying User Details & Activity
 
-Because all domain tables share a uniform column structure, fetching all historical data and details for a specific user across all apps is simple and efficient.
+### For app clients: `GET /api/v1/audit/logs`
+
+An integrated app reads its own history through the API, with the same bearer key it uses to
+post events. No BigQuery access is handed out.
+
+```bash
+curl -s -G https://monolith-postbacks.adithyakrishnan.com/api/v1/audit/logs \
+  -H "Authorization: Bearer <YOUR_MONOLITH_API_KEY>" \
+  --data-urlencode 'userId=user_uid_123' \
+  --data-urlencode 'domain=expenses' \
+  --data-urlencode 'from=2026-08-01T00:00:00Z' \
+  --data-urlencode 'limit=100'
+```
+
+Response: `{ scope, count, results[], nextBefore }`, newest first. `results[]` rows carry the
+full shared column set with `payload` as real JSON.
+
+**Isolation.** The `source_app` filter is applied server-side from your key — you cannot read
+another app's events, and `?sourceApp=<other app>` returns `403`. Only cross-app credentials
+(the dashboard's `API_KEY`, an allow-listed Google identity) may read across apps or pass
+`?sourceApp=`. Within your own app you see every user; end-user-level separation is the source
+app's responsibility.
+
+Filters: `userId`, `domain`, `eventType`, `from` / `before` (ISO-8601 or epoch millis),
+`limit`. Paginate with `before = <previous nextBefore>`. With no `from`, only the last 30 days
+(configurable) are scanned.
+
+### For the operator: direct BigQuery
+
+Because all domain tables share a uniform column structure, fetching all historical data and details for a specific user across all apps is simple and efficient from BigQuery directly.
 
 ### Query 1: Fetch All User History Across All Integrated Apps
 Query the unified `events.all_events` cross-domain view to retrieve a complete timeline of user actions:

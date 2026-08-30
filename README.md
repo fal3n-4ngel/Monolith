@@ -14,6 +14,7 @@ each to its per-app, per-domain BigQuery table, and post a visible confirmation 
 | Method | Path | Auth | Notes |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/v1/events/postback` | **bearer** | Domain-event ingest. Rate limited per IP. Returns `202 Accepted`. |
+| `GET`  | `/api/v1/audit/logs` | **bearer** | Read domain-event history, newest first. Confined to the calling credential's app. |
 | `GET`  | `/health`, `/` | none | Liveness. Touches no backend. |
 | `GET`  | `/swagger-ui.html` | none | Interactive API docs. |
 
@@ -45,6 +46,62 @@ folder in [Bruno](https://www.usebruno.com) and select the `Local` or `Productio
 
 ---
 
+## Reading events back
+
+```bash
+curl -s -G https://monolith-postbacks.adithyakrishnan.com/api/v1/audit/logs \
+  -H "Authorization: Bearer $CONTINUUM_API_KEY" \
+  --data-urlencode 'userId=usr_1' --data-urlencode 'domain=expenses' --data-urlencode 'limit=50'
+```
+
+```json
+{
+  "scope": "continuum-home",
+  "count": 1,
+  "results": [
+    { "domain": "expenses", "eventId": "…", "sourceApp": "continuum-home", "userId": "usr_1",
+      "eventType": "EXPENSE_CREATED", "action": "CREATE", "entityId": "exp_1", "itemCount": 1,
+      "occurredAt": "2026-08-30T12:00:00Z", "receivedAt": "2026-08-30T12:00:01Z",
+      "payload": { "amount": 42.5, "category": "food" } }
+  ],
+  "nextBefore": "2026-08-30T12:00:00Z"
+}
+```
+
+**A credential can only read its own app.** The `source_app` filter is set server-side from the
+authenticated key — a client passing `?sourceApp=` for a different app gets `403`, not another
+app's rows. Which credential may read which app is the checked-in registry
+[`clients.json`](src/main/resources/clients.json) — no secrets in it, one entry per credential:
+
+```json
+{ "clients": [
+  { "name": "owner",     "keyProperty": "dashboard.api-key", "readScope": "all" },
+  { "name": "continuum", "readScope": "continuum-home" }
+] }
+```
+
+| `readScope` | Effect |
+| :--- | :--- |
+| `all` | Reads every app. Also every allow-listed Google identity. |
+| a registered `sourceApp` id (e.g. `continuum-home`) | Reads only that app. |
+| `none` | Still authenticates for ingest; every read is `403`. |
+
+**No secret is added per app.** The owner's `keyProperty` resolves its key from a named property
+(`dashboard.api-key` ← `API_KEY`). Every other client's key is looked up by `name` in one
+aggregated secret, `MONOLITH_CLIENT_KEYS` — a `{"name":"token"}` JSON map (or `name=token` CSV).
+Onboarding a client is a row here plus a new *version* of that one secret; the count of Secret
+Manager secrets never grows. Startup fails loudly on a bad scope, a duplicate name, or a
+malformed `MONOLITH_CLIENT_KEYS`.
+
+Filters: `sourceApp` (cross-app credentials only), `userId`, `domain`, `eventType` (all checked
+against the same allowlists ingest uses), `from` / `before` (`occurred_at` bounds, ISO-8601 or
+epoch millis), `limit`. With no `from`, only the last `AUDIT_QUERY_LOOKBACK_DAYS` days are
+scanned. Paginate by passing the previous response's `nextBefore` as `before`. Reads have their
+own tighter per-IP and per-credential rate limit (`AUDIT_READ_RATE_LIMIT_PER_MINUTE`) because
+each one is a BigQuery scan.
+
+---
+
 ## Why this is authenticated
 
 Unlike a browser-facing endpoint, a domain event is only ever emitted by a source app's own
@@ -63,12 +120,18 @@ continuity with already-deployed config) so it's tunable without a code change.
 
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
-| `API_KEY` | — | Static bearer key. **Required** (server rejects all authenticated requests without one). |
-| `CONTINUUM_API_KEY` | — | The key Continuum presents. Also a second accepted key, so `API_KEY` can rotate without downtime. |
+| `API_KEY` | — | The owner / admin bearer key (`clients.json` client `owner`, `readScope: all`). **Required.** |
+| `MONOLITH_CLIENT_KEYS` | — | Every non-owner client key in one value: `{"continuum":"tok",…}` JSON or `continuum=tok,…` CSV. One secret for all apps; adding an app is a new version, not a new secret. |
 | `DISCORD_WEBHOOK_URL` | — | Where the "event received" ping goes. Notifications are skipped (not sent unauthenticated) if unset. |
 | `GCP_PROJECT_ID` | `portfolio-api-505006` | BigQuery project. |
-| `AUDIT_RATE_LIMIT_PER_MINUTE` | `120` | Per-IP ingest budget, per instance. `0` disables. |
-| `AUDIT_BIGQUERY_ENABLED` | `true` | Escape hatch to disable BigQuery writes without a redeploy. |
+| `AUDIT_RATE_LIMIT_PER_MINUTE` | `120` | Per-IP *and* per-credential postback budget, per instance. A leaked key replayed from rotating IPs still hits the per-credential ceiling. `0` disables. |
+| `AUDIT_GLOBAL_RATE_LIMIT_PER_MINUTE` | `300` | Looser per-IP budget across every endpoint (health, swagger, actuator included), per instance — a backstop in front of the tighter postback-specific budget above. `0` disables. |
+| `MONOLITH_CLIENTS_FILE` | `classpath:clients.json` | Location of the credential/read-scope registry. Point at an external file to change scopes without a rebuild. |
+| `AUDIT_READ_RATE_LIMIT_PER_MINUTE` | `30` | Per-IP *and* per-credential budget for `/audit/logs`, per instance. Lower than ingest — a read is a BigQuery scan. `0` disables. |
+| `AUDIT_QUERY_LOOKBACK_DAYS` | `30` | With no `?from`, how far back `/audit/logs` scans. Bounds query cost. |
+| `AUDIT_QUERY_DEFAULT_LIMIT` / `AUDIT_QUERY_MAX_LIMIT` | `50` / `200` | Default and hard-capped row count for `/audit/logs`. |
+| `AUDIT_QUERY_MAX_BYTES_BILLED` | `100000000` | BigQuery refuses a read estimated to bill above this. `0` removes the cap. |
+| `AUDIT_BIGQUERY_ENABLED` | `true` | Escape hatch to disable BigQuery writes (and reads) without a redeploy. |
 | `AUDIT_BIGQUERY_DOMAIN_DATASET` | `events` | BigQuery dataset for the per-app domain-event tables. |
 | `AUDIT_BIGQUERY_LOCATION` | `US` | Dataset location. Fixed at creation time — see BigQuery setup below. |
 | `ALLOWED_EMAIL` | — | Google ID token identity accepted as an alternate credential. No current endpoint needs a human/browser caller — kept as general-purpose auth infrastructure, not because anything here uses it today. |
@@ -150,8 +213,8 @@ The service sits in the Cloud Run and BigQuery free tiers under normal personal 
 that could take it out of them, in order:
 
 1. **Unbounded ingest.** The endpoint requires a bearer key, so this is bounded by whoever holds
-   `CONTINUUM_API_KEY` — but `PostbackRateLimitFilter` still caps per-IP throughput as a backstop
-   against a leaked key or a runaway caller.
+   a client key — but `PostbackRateLimitFilter` still caps per-IP and per-credential throughput as
+   a backstop against a leaked key or a runaway caller.
 2. **Payload size.** `PayloadSanitizer` caps entry count, value length, and nesting depth.
 3. **BigQuery streaming inserts.** `insertAll` is used rather than the Storage Write API: at this
    project's volume the difference is pennies, and `insertAll`'s per-row `insertId` gives
@@ -192,17 +255,24 @@ Secrets come from Secret Manager and must exist before the first deploy:
 
 ```bash
 printf 'value' | gcloud secrets create API_KEY --data-file=- --project=portfolio-api-505006
+printf '{"continuum":"<continuum-home token>"}' \
+  | gcloud secrets create MONOLITH_CLIENT_KEYS --data-file=- --project=portfolio-api-505006
+printf '<webhook url>' | gcloud secrets create DISCORD_WEBHOOK_URL --data-file=- --project=portfolio-api-505006
 ```
 
-Repeat for `CONTINUUM_API_KEY` and `DISCORD_WEBHOOK_URL`. All three are wired into the service
-via `--set-secrets`. Give Continuum the **`CONTINUUM_API_KEY`** value (as `MONOLITH_API_KEY` in
-its environment), not `API_KEY` — so the credential sitting in Vercel can be rotated
-independently:
+All three are wired in via `--set-secrets`. Give continuum-home the token you put under
+`"continuum"` (as `MONOLITH_API_KEY` in its Vercel env), not `API_KEY` — and onboard the next app
+by adding another key to the map:
 
 ```bash
-gcloud secrets versions access latest --secret=CONTINUUM_API_KEY --project=portfolio-api-505006
+gcloud secrets versions access latest --secret=MONOLITH_CLIENT_KEYS --project=portfolio-api-505006 \
+  | jq '. + {"budget-cli":"<new token>"}' \
+  | gcloud secrets versions add MONOLITH_CLIENT_KEYS --data-file=- --project=portfolio-api-505006
+# then add {"name":"budget-cli","readScope":"budget-cli"} to clients.json
 ```
 
-Note that `ApiKeyAuthFilter` currently treats both keys identically — same authority on every
-authenticated endpoint. Separate keys buy independent rotation and attribution, **not** privilege
-separation.
+Note that `ApiKeyAuthFilter` treats every key identically **for ingest** — same authority on
+`/postback`. The **read** path is where they differ: each client's `readScope` in
+[`clients.json`](src/main/resources/clients.json) confines `/audit/logs` to one app, so a leaked
+or misused client key can't read another app's history. A per-client key still buys attribution
+and independent revocation (drop it from `MONOLITH_CLIENT_KEYS`, add a new version).

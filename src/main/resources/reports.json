@@ -1,35 +1,172 @@
 {
-  "_comment": "Report catalog. Each sql is one parameterised SELECT/WITH. @params are bound; {{all_events}} expands to the view; @caller_app is the caller's app (cross-app credentials pass callerApp). Param types: string | timestamp | date | int64 | bool. Allotment is per client in clients.json.",
+  "_comment": "Report catalog. Each sql is one parameterised SELECT/WITH. @params are bound; {{all_events}} expands to the view; @caller_app is the client the run is for. Every report filters to production events (payload.environment in production|prod) — uat / development / no-env rows are excluded. 'tags' pins a report to specific sourceApp ids. Param types: string | timestamp | date | int64 | bool. Allotment is per client in clients.json.",
   "reports": [
     {
-      "id": "activity-summary",
-      "name": "Activity summary by event type",
-      "description": "Event and item counts per event type / action for one app over a date range.",
+      "id": "audit-log",
+      "name": "Audit Log Report",
+      "description": "Every production domain event for one client over a time range, full detail.",
       "params": [
         { "name": "from", "type": "timestamp", "required": true },
         { "name": "to", "type": "timestamp", "required": false }
       ],
-      "sql": "SELECT event_type, action, COUNT(*) AS events, SUM(item_count) AS items, MIN(occurred_at) AS first_seen, MAX(occurred_at) AS last_seen FROM {{all_events}} WHERE source_app = @caller_app AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY event_type, action ORDER BY events DESC"
+      "sql": "SELECT occurred_at, received_at, domain, event_type, action, local_user_id, entity_id, item_count, TO_JSON_STRING(payload) AS payload FROM {{all_events}} WHERE source_app = @caller_app AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) ORDER BY occurred_at DESC"
+    },
+    {
+      "id": "event-type-summary",
+      "name": "Event Type Summary",
+      "description": "Production event and item counts, distinct users, and first/last seen per event type and action.",
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT event_type, action, COUNT(*) AS events, SUM(item_count) AS items, COUNT(DISTINCT local_user_id) AS users, MIN(occurred_at) AS first_seen, MAX(occurred_at) AS last_seen FROM {{all_events}} WHERE source_app = @caller_app AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY event_type, action ORDER BY events DESC"
     },
     {
       "id": "daily-volume",
-      "name": "Daily event volume",
-      "description": "Events per calendar day for one app over a date range.",
+      "name": "Daily Volume",
+      "description": "Production events and items per calendar day and domain.",
       "params": [
         { "name": "from", "type": "timestamp", "required": true },
         { "name": "to", "type": "timestamp", "required": false }
       ],
-      "sql": "SELECT DATE(occurred_at) AS day, COUNT(*) AS events, SUM(item_count) AS items FROM {{all_events}} WHERE source_app = @caller_app AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY day ORDER BY day"
+      "sql": "SELECT DATE(occurred_at) AS day, domain, COUNT(*) AS events, SUM(item_count) AS items FROM {{all_events}} WHERE source_app = @caller_app AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY day, domain ORDER BY day, domain"
     },
     {
-      "id": "cross-app-volume",
-      "name": "Cross-app daily volume",
-      "description": "Events per day per app across every integrated app. Owner / cross-app credentials only.",
+      "id": "user-activity",
+      "name": "User Activity",
+      "description": "Per acting user (production only), keyed by email: event count, domains touched, and first/last activity.",
       "params": [
         { "name": "from", "type": "timestamp", "required": true },
         { "name": "to", "type": "timestamp", "required": false }
       ],
-      "sql": "SELECT DATE(occurred_at) AS day, source_app, domain, COUNT(*) AS events FROM {{all_events}} WHERE occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY day, source_app, domain ORDER BY day, source_app, domain"
+      "sql": "SELECT COALESCE(JSON_VALUE(payload, '$.userEmail'), local_user_id) AS user, COUNT(*) AS events, COUNT(DISTINCT domain) AS domains, COUNT(DISTINCT entity_id) AS entities, MIN(occurred_at) AS first_event, MAX(occurred_at) AS last_event FROM {{all_events}} WHERE source_app = @caller_app AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY user ORDER BY events DESC"
+    },
+    {
+      "id": "deletions",
+      "name": "Deletions Log",
+      "description": "Every production DELETE event — what was removed, when, and by which user.",
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT occurred_at, domain, event_type, local_user_id, entity_id, item_count, TO_JSON_STRING(payload) AS payload FROM {{all_events}} WHERE source_app = @caller_app AND action = 'DELETE' AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) ORDER BY occurred_at DESC"
+    },
+    {
+      "id": "ingest-latency",
+      "name": "Ingest Latency",
+      "description": "Per day (production): how long after an event occurred it reached Monolith, p50 / p95 / max seconds.",
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT DATE(occurred_at) AS day, COUNT(*) AS events, APPROX_QUANTILES(TIMESTAMP_DIFF(received_at, occurred_at, SECOND), 100)[OFFSET(50)] AS p50_seconds, APPROX_QUANTILES(TIMESTAMP_DIFF(received_at, occurred_at, SECOND), 100)[OFFSET(95)] AS p95_seconds, MAX(TIMESTAMP_DIFF(received_at, occurred_at, SECOND)) AS max_seconds FROM {{all_events}} WHERE source_app = @caller_app AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY day ORDER BY day"
+    },
+    {
+      "id": "expense-spend",
+      "name": "Expense Spend by Category",
+      "description": "Expenses domain (production): total payload.amount by payload.category and month.",
+      "tags": ["continuum-home"],
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT FORMAT_DATE('%Y-%m', DATE(occurred_at)) AS month, JSON_VALUE(payload, '$.category') AS category, COUNT(*) AS events, SUM(SAFE_CAST(JSON_VALUE(payload, '$.amount') AS NUMERIC)) AS total_amount FROM {{all_events}} WHERE source_app = @caller_app AND domain = 'expenses' AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY month, category ORDER BY month, total_amount DESC"
+    },
+    {
+      "id": "subscription-costs",
+      "name": "Subscription Costs",
+      "description": "Subscriptions domain (production): event count and payload.amount by month and action.",
+      "tags": ["continuum-home"],
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT FORMAT_DATE('%Y-%m', DATE(occurred_at)) AS month, action, COUNT(*) AS events, COUNT(DISTINCT entity_id) AS subscriptions, SUM(SAFE_CAST(JSON_VALUE(payload, '$.amount') AS NUMERIC)) AS total_amount FROM {{all_events}} WHERE source_app = @caller_app AND domain = 'subscriptions' AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY month, action ORDER BY month, action"
+    },
+    {
+      "id": "watchlist-churn",
+      "name": "Watchlist Churn",
+      "description": "Watchlist domain (production): adds, updates, and removes per month.",
+      "tags": ["continuum-home"],
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT FORMAT_DATE('%Y-%m', DATE(occurred_at)) AS month, event_type, action, COUNT(*) AS events, COUNT(DISTINCT entity_id) AS titles FROM {{all_events}} WHERE source_app = @caller_app AND domain = 'watchlist' AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY month, event_type, action ORDER BY month, event_type, action"
+    },
+    {
+      "id": "investment-activity",
+      "name": "Investment Activity",
+      "description": "Investments domain (production): event count and payload.amount by month and action.",
+      "tags": ["continuum-home"],
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT FORMAT_DATE('%Y-%m', DATE(occurred_at)) AS month, action, COUNT(*) AS events, COUNT(DISTINCT entity_id) AS assets, SUM(SAFE_CAST(JSON_VALUE(payload, '$.amount') AS NUMERIC)) AS total_amount FROM {{all_events}} WHERE source_app = @caller_app AND domain = 'investments' AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY month, action ORDER BY month, action"
+    },
+    {
+      "id": "report-usage",
+      "name": "Report Usage",
+      "description": "monolith-dashboard (production): runs, rows, users, and last run per report.",
+      "tags": ["monolith-dashboard"],
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT entity_id AS report_id, COUNT(*) AS runs, SUM(item_count) AS rows_total, COUNT(DISTINCT COALESCE(JSON_VALUE(payload, '$.userEmail'), local_user_id)) AS users, MAX(occurred_at) AS last_run FROM {{all_events}} WHERE source_app = @caller_app AND event_type = 'REPORT_RUN' AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY report_id ORDER BY runs DESC"
+    },
+    {
+      "id": "mcp-usage",
+      "name": "MCP Usage",
+      "description": "monolith-dashboard (production): MCP tool calls per day and tool.",
+      "tags": ["monolith-dashboard"],
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT DATE(occurred_at) AS day, entity_id AS tool, COUNT(*) AS calls FROM {{all_events}} WHERE source_app = @caller_app AND event_type = 'MCP_QUERY' AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY day, tool ORDER BY day, tool"
+    },
+    {
+      "id": "workspace-activity",
+      "name": "Workspace Activity",
+      "description": "monolith-dashboard (production): daily event count and users by event type.",
+      "tags": ["monolith-dashboard"],
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT DATE(occurred_at) AS day, event_type, COUNT(*) AS events, COUNT(DISTINCT local_user_id) AS users FROM {{all_events}} WHERE source_app = @caller_app AND LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY day, event_type ORDER BY day, event_type"
+    },
+    {
+      "id": "cross-app-users",
+      "name": "Cross-App Users",
+      "description": "Users active in more than one app, with the list of apps. Owner only.",
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT COALESCE(JSON_VALUE(payload, '$.userEmail'), local_user_id) AS user_email, COUNT(DISTINCT source_app) AS app_count, STRING_AGG(DISTINCT source_app, ', ') AS apps, COUNT(*) AS events, MIN(occurred_at) AS first_event, MAX(occurred_at) AS last_event FROM {{all_events}} WHERE LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY user_email HAVING COUNT(DISTINCT source_app) > 1 ORDER BY app_count DESC, events DESC"
+    },
+    {
+      "id": "user-crosslink",
+      "name": "User Activity Across Apps",
+      "description": "One row per user email, joined across every app: which apps and domains they touch, event count, first/last. Owner only.",
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT COALESCE(JSON_VALUE(payload, '$.userEmail'), local_user_id) AS user_email, COUNT(*) AS events, COUNT(DISTINCT source_app) AS apps, STRING_AGG(DISTINCT source_app, ', ') AS app_list, COUNT(DISTINCT domain) AS domains, MIN(occurred_at) AS first_event, MAX(occurred_at) AS last_event FROM {{all_events}} WHERE LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY user_email ORDER BY events DESC"
+    },
+    {
+      "id": "all-apps-volume",
+      "name": "Cross-App Volume",
+      "description": "Production events per day per app across every integrated app. Owner only.",
+      "params": [
+        { "name": "from", "type": "timestamp", "required": true },
+        { "name": "to", "type": "timestamp", "required": false }
+      ],
+      "sql": "SELECT DATE(occurred_at) AS day, source_app, domain, COUNT(*) AS events, SUM(item_count) AS items FROM {{all_events}} WHERE LOWER(JSON_VALUE(payload, '$.environment')) IN ('production', 'prod') AND occurred_at >= @from AND (@to IS NULL OR occurred_at < @to) GROUP BY day, source_app, domain ORDER BY day, source_app, domain"
     }
   ]
 }

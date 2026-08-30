@@ -43,17 +43,20 @@ class ReportControllerIntegrationTest {
     }
 
     @Test
-    void aCrossAppCredentialSeesEveryReport() throws Exception {
+    void aCrossAppCredentialSeesEveryReportAndEveryApp() throws Exception {
         mockMvc.perform(get("/api/v1/reports").header("Authorization", ADMIN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.reports.length()").value(3));
+                .andExpect(jsonPath("$.reports.length()").value(16))
+                .andExpect(jsonPath("$.apps").value(org.hamcrest.Matchers.hasItem("continuum-home")))
+                .andExpect(jsonPath("$.apps").value(org.hamcrest.Matchers.hasItem("monolith-dashboard")));
     }
 
     @Test
-    void aScopedCredentialSeesOnlyItsAllottedReports() throws Exception {
+    void aScopedCredentialSeesOnlyItsAllottedReportsAndItsOwnApp() throws Exception {
         mockMvc.perform(get("/api/v1/reports").header("Authorization", CONTINUUM))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.reports.length()").value(2));
+                .andExpect(jsonPath("$.reports.length()").value(10))
+                .andExpect(jsonPath("$.apps").value(org.hamcrest.Matchers.contains("continuum-home")));
     }
 
     @Test
@@ -61,7 +64,7 @@ class ReportControllerIntegrationTest {
         when(runner.run(anyString(), any())).thenReturn(
                 new BigQueryReportRunner.Result(List.of("day", "events"), List.of(List.of("2026-01-01", "5")), false));
 
-        mockMvc.perform(post("/api/v1/reports/activity-summary/run")
+        mockMvc.perform(post("/api/v1/reports/audit-log/run")
                         .header("Authorization", CONTINUUM)
                         .contentType("application/json")
                         .content("{\"from\":\"2026-01-01T00:00:00Z\"}"))
@@ -72,7 +75,7 @@ class ReportControllerIntegrationTest {
 
     @Test
     void runningAnUnallottedReportIsForbidden() throws Exception {
-        mockMvc.perform(post("/api/v1/reports/cross-app-volume/run")
+        mockMvc.perform(post("/api/v1/reports/all-apps-volume/run")
                         .header("Authorization", CONTINUUM)
                         .contentType("application/json")
                         .content("{\"from\":\"2026-01-01T00:00:00Z\"}"))
@@ -91,8 +94,8 @@ class ReportControllerIntegrationTest {
     }
 
     @Test
-    void aCrossAppRunOfAScopedReportNeedsCallerApp() throws Exception {
-        mockMvc.perform(post("/api/v1/reports/activity-summary/run")
+    void aCrossAppRunOfAPerClientReportNeedsCallerApp() throws Exception {
+        mockMvc.perform(post("/api/v1/reports/audit-log/run")
                         .header("Authorization", ADMIN)
                         .contentType("application/json")
                         .content("{\"from\":\"2026-01-01T00:00:00Z\"}"))

@@ -1,6 +1,7 @@
 package com.dashboard.api.reports;
 
 import com.dashboard.api.config.ReportProperties;
+import com.dashboard.api.events.SourceApp;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -36,8 +37,10 @@ public class ReportRegistry {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record ReportDefinition(String id, String name, String description, List<ParamSpec> params, String sql) {
+    public record ReportDefinition(String id, String name, String description, List<String> tags,
+                                   List<ParamSpec> params, String sql) {
         public ReportDefinition {
+            tags = tags == null ? List.of() : List.copyOf(tags);
             params = params == null ? List.of() : List.copyOf(params);
         }
 
@@ -89,6 +92,12 @@ public class ReportRegistry {
                 throw new IllegalStateException("Report '" + report.id() + "' has no 'name'");
             }
             requireReadOnlySelect(report);
+            for (String tag : report.tags()) {
+                if (SourceApp.parse(tag).isEmpty()) {
+                    throw new IllegalStateException("Report '" + report.id() + "' tag '" + tag
+                            + "' is not a registered sourceApp");
+                }
+            }
             for (ParamSpec param : report.params()) {
                 if (blank(param.name())) {
                     throw new IllegalStateException("Report '" + report.id() + "' has a param with no 'name'");

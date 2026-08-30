@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -48,6 +49,14 @@ public class ReportService {
                 .toList();
     }
 
+    /** Clients this credential may run a report for: all of them for a cross-app credential, else its own. */
+    public List<String> selectableApps(AuthenticatedClient client) {
+        if (client.isCrossApp()) {
+            return Arrays.stream(SourceApp.values()).map(SourceApp::appId).toList();
+        }
+        return client.boundApp().map(app -> List.of(app.appId())).orElse(List.of());
+    }
+
     public BigQueryReportRunner.Result run(AuthenticatedClient client, String reportId, Map<String, String> rawParams) {
         ReportDefinition report = registry.byId(reportId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown report: " + reportId));
@@ -70,7 +79,12 @@ public class ReportService {
             }
         }
         if (report.referencesCallerApp()) {
-            bound.put("caller_app", QueryParameterValue.string(resolveCallerApp(client, rawParams)));
+            String callerApp = resolveCallerApp(client, rawParams);
+            if (!report.tags().isEmpty() && !report.tags().contains(callerApp)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "report '" + reportId + "' only applies to: " + String.join(", ", report.tags()));
+            }
+            bound.put("caller_app", QueryParameterValue.string(callerApp));
         }
 
         log.info("[Reports] run id={} client={} params={}", reportId, client.name(), bound.keySet());
@@ -144,7 +158,8 @@ public class ReportService {
     }
 
     private static ReportSummary toSummary(ReportDefinition report) {
-        return new ReportSummary(report.id(), report.name(), report.description(), report.referencesCallerApp(),
+        return new ReportSummary(report.id(), report.name(), report.description(),
+                report.referencesCallerApp(), report.tags(),
                 report.params().stream()
                         .map(p -> new ReportSummary.Param(p.name(), p.type(), p.required()))
                         .toList());

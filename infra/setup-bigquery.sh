@@ -17,6 +17,17 @@ DATASET="events"
 APPS=("continuum_home")
 DOMAINS=("expenses" "watchlist" "investments" "subscriptions")
 
+# Apps whose domains differ from the standard set, as "table:domain".
+EXTRA_TABLES=("monolith_dashboard_usage:usage")
+
+TABLES=()
+for app in "${APPS[@]}"; do
+  for domain in "${DOMAINS[@]}"; do
+    TABLES+=("${app}_${domain}:${domain}")
+  done
+done
+TABLES+=("${EXTRA_TABLES[@]}")
+
 echo "==> Project:  ${PROJECT}"
 echo "==> Location: ${LOCATION}"
 echo "==> Dataset:  ${DATASET}"
@@ -69,40 +80,37 @@ action:STRING,entity_id:STRING,item_count:INT64,occurred_at:TIMESTAMP,\
 received_at:TIMESTAMP,payload:JSON"
 
 echo "==> Domain event tables"
-for app in "${APPS[@]}"; do
-  for domain in "${DOMAINS[@]}"; do
-    run_step "${app}_${domain}" \
-      bq mk --project_id="${PROJECT}" --table \
-        --time_partitioning_field=occurred_at --time_partitioning_type=DAY \
-        --clustering_fields=local_user_id,event_type \
-        "${PROJECT}:${DATASET}.${app}_${domain}" "${DOMAIN_SCHEMA}"
-  done
+for entry in "${TABLES[@]}"; do
+  table="${entry%%:*}"
+  run_step "${table}" \
+    bq mk --project_id="${PROJECT}" --table \
+      --time_partitioning_field=occurred_at --time_partitioning_type=DAY \
+      --clustering_fields=local_user_id,event_type \
+      "${PROJECT}:${DATASET}.${table}" "${DOMAIN_SCHEMA}"
 done
 echo
 
 # ---------------------------------------------------------------------------
 # 3. all_events view — every domain event from every app in one queryable stream.
 #
-# The payoff of the uniform column set: onboarding a new domain or app means
-# adding one more UNION ALL branch here, not designing a new query shape.
+# CREATE OR REPLACE, not `bq mk --view`: the latter no-ops once the view exists,
+# so a new table added above would never make it into the union.
 # ---------------------------------------------------------------------------
 
-ACTIVITY_BRANCHES=""
-for app in "${APPS[@]}"; do
-  for domain in "${DOMAINS[@]}"; do
-    [ -n "${ACTIVITY_BRANCHES}" ] && ACTIVITY_BRANCHES="${ACTIVITY_BRANCHES}
+ACTIVITY_SQL=""
+for entry in "${TABLES[@]}"; do
+  table="${entry%%:*}"
+  domain="${entry##*:}"
+  [ -n "${ACTIVITY_SQL}" ] && ACTIVITY_SQL="${ACTIVITY_SQL}
   UNION ALL"
-    ACTIVITY_BRANCHES="${ACTIVITY_BRANCHES}
-  SELECT '${domain}' AS domain, * FROM \`${PROJECT}.${DATASET}.${app}_${domain}\`"
-  done
+  ACTIVITY_SQL="${ACTIVITY_SQL}
+  SELECT '${domain}' AS domain, * FROM \`${PROJECT}.${DATASET}.${table}\`"
 done
-
-ACTIVITY_SQL="${ACTIVITY_BRANCHES}"
 
 echo "==> Cross-domain activity view"
 run_step "all_events" \
-  bq mk --project_id="${PROJECT}" --use_legacy_sql=false \
-    --view="${ACTIVITY_SQL}" "${PROJECT}:${DATASET}.all_events"
+  bq query --project_id="${PROJECT}" --use_legacy_sql=false --nouse_legacy_sql \
+    "CREATE OR REPLACE VIEW \`${PROJECT}.${DATASET}.all_events\` AS ${ACTIVITY_SQL}"
 echo
 
 cat <<EOF
@@ -112,6 +120,7 @@ cat <<EOF
   bq show --project_id=${PROJECT} ${DATASET}.continuum_home_expenses
   bq query --project_id=${PROJECT} --use_legacy_sql=false 'SELECT * FROM \`${PROJECT}.${DATASET}.all_events\` ORDER BY occurred_at DESC LIMIT 10'
 
-To onboard a new app: add its normalized name to APPS above, re-run this script, and add
-its event types to DomainEventType. To add a domain: add it to DOMAINS and to that enum.
+To onboard a new app: add its normalized name to APPS above (or, for a non-standard domain
+set, an entry to EXTRA_TABLES), re-run this script, and add its event types to DomainEventType.
+To add a domain: add it to DOMAINS and to that enum.
 EOF

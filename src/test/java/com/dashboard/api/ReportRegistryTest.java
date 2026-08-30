@@ -21,17 +21,17 @@ class ReportRegistryTest {
         ReportRegistry registry = load("classpath:reports.json");
 
         assertThat(registry.reports()).extracting(ReportRegistry.ReportDefinition::id)
-                .contains("activity-summary", "daily-volume", "cross-app-volume");
-        assertThat(registry.byId("daily-volume")).isPresent();
+                .contains("audit-log", "event-type-summary", "daily-volume", "all-apps-volume");
+        assertThat(registry.byId("audit-log")).isPresent();
         assertThat(registry.byId("nope")).isEmpty();
     }
 
     @Test
-    void aScopedReportIsFlaggedAsUsingCallerApp() {
+    void aPerClientReportIsFlaggedAsUsingCallerApp() {
         ReportRegistry registry = load("classpath:reports.json");
 
-        assertThat(registry.byId("activity-summary").orElseThrow().referencesCallerApp()).isTrue();
-        assertThat(registry.byId("cross-app-volume").orElseThrow().referencesCallerApp()).isFalse();
+        assertThat(registry.byId("audit-log").orElseThrow().referencesCallerApp()).isTrue();
+        assertThat(registry.byId("all-apps-volume").orElseThrow().referencesCallerApp()).isFalse();
     }
 
     @Test

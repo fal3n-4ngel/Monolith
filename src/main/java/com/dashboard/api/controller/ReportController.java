@@ -41,7 +41,8 @@ public class ReportController {
             security = @SecurityRequirement(name = "BearerAuth"))
     @GetMapping
     public ReportListResponse list(Authentication authentication) {
-        return new ReportListResponse(service.available(AuthenticatedClient.require(authentication)));
+        AuthenticatedClient client = AuthenticatedClient.require(authentication);
+        return new ReportListResponse(service.available(client), service.selectableApps(client));
     }
 
     @Operation(summary = "Run a report and return its result as CSV",

@@ -61,18 +61,25 @@ class ReportServiceTest {
     @Test
     void crossAppCredentialSeesEveryReport() {
         assertThat(service.available(OWNER)).extracting(r -> r.id())
-                .containsExactlyInAnyOrder("activity-summary", "daily-volume", "cross-app-volume");
+                .contains("audit-log", "all-apps-volume", "ingest-latency");
     }
 
     @Test
     void scopedCredentialSeesOnlyItsAllottedReports() {
         assertThat(service.available(CONTINUUM)).extracting(r -> r.id())
-                .containsExactlyInAnyOrder("activity-summary", "daily-volume");
+                .contains("audit-log", "daily-volume")
+                .doesNotContain("all-apps-volume");
+    }
+
+    @Test
+    void selectableAppsIsEveryAppForTheOwnerAndJustItsOwnForAScopedClient() {
+        assertThat(service.selectableApps(OWNER)).contains("continuum-home", "monolith-dashboard");
+        assertThat(service.selectableApps(CONTINUUM)).containsExactly("continuum-home");
     }
 
     @Test
     void runningAnUnallottedReportIsForbidden() {
-        assertThatThrownBy(() -> service.run(CONTINUUM, "cross-app-volume", Map.of("from", "2026-01-01T00:00:00Z")))
+        assertThatThrownBy(() -> service.run(CONTINUUM, "all-apps-volume", Map.of("from", "2026-01-01T00:00:00Z")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("not allotted");
         verifyNoInteractions(runner);
@@ -87,7 +94,7 @@ class ReportServiceTest {
 
     @Test
     void aMissingRequiredParameterIsRejected() {
-        assertThatThrownBy(() -> service.run(CONTINUUM, "activity-summary", Map.of()))
+        assertThatThrownBy(() -> service.run(CONTINUUM, "audit-log", Map.of()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("missing required parameter: from");
         verifyNoInteractions(runner);
@@ -95,7 +102,7 @@ class ReportServiceTest {
 
     @Test
     void scopedRunPinsCallerAppToTheCredentialsOwnApp() {
-        service.run(CONTINUUM, "activity-summary", Map.of("from", "2026-01-01T00:00:00Z"));
+        service.run(CONTINUUM, "audit-log", Map.of("from", "2026-01-01T00:00:00Z"));
 
         Map<String, QueryParameterValue> bound = capture();
         assertThat(bound).containsKey("from");
@@ -103,15 +110,15 @@ class ReportServiceTest {
     }
 
     @Test
-    void crossAppRunNeedsAnExplicitCallerAppForAScopedReport() {
-        assertThatThrownBy(() -> service.run(OWNER, "activity-summary", Map.of("from", "2026-01-01T00:00:00Z")))
+    void crossAppRunNeedsAnExplicitCallerAppForAPerClientReport() {
+        assertThatThrownBy(() -> service.run(OWNER, "audit-log", Map.of("from", "2026-01-01T00:00:00Z")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("callerApp is required");
     }
 
     @Test
     void crossAppRunAcceptsACallerApp() {
-        service.run(OWNER, "activity-summary",
+        service.run(OWNER, "audit-log",
                 Map.of("from", "2026-01-01T00:00:00Z", "callerApp", "continuum-home"));
 
         assertThat(capture().get("caller_app").getValue()).isEqualTo("continuum-home");
@@ -119,8 +126,24 @@ class ReportServiceTest {
 
     @Test
     void aReportWithoutCallerAppBindsNoCallerApp() {
-        service.run(OWNER, "cross-app-volume", Map.of("from", "2026-01-01T00:00:00Z"));
+        service.run(OWNER, "all-apps-volume", Map.of("from", "2026-01-01T00:00:00Z"));
 
         assertThat(capture()).doesNotContainKey("caller_app");
+    }
+
+    @Test
+    void aTaggedReportRejectsAnAppItIsNotTiedTo() {
+        assertThatThrownBy(() -> service.run(OWNER, "expense-spend",
+                Map.of("from", "2026-01-01T00:00:00Z", "callerApp", "monolith-dashboard")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("only applies to: continuum-home");
+        verifyNoInteractions(runner);
+    }
+
+    @Test
+    void aTaggedReportRunsForTheAppItIsTiedTo() {
+        service.run(CONTINUUM, "expense-spend", Map.of("from", "2026-01-01T00:00:00Z"));
+
+        assertThat(capture().get("caller_app").getValue()).isEqualTo("continuum-home");
     }
 }

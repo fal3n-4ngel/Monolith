@@ -7,6 +7,7 @@ public record ReportSummary(
         String name,
         String description,
         boolean needsCallerApp,
+        List<String> tags,
         List<Param> params
 ) {
     public record Param(String name, String type, boolean required) {

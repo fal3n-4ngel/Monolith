@@ -108,33 +108,40 @@ each one is a BigQuery scan.
 
 Admin-authored named queries, run on demand and returned as CSV. The catalog is the checked-in
 [`reports.json`](src/main/resources/reports.json) — each entry is a single parameterised
-`SELECT`/`WITH`:
+`SELECT`/`WITH`. Bundled:
 
-```json
-{ "id": "activity-summary", "name": "Activity summary by event type",
-  "params": [{ "name": "from", "type": "timestamp", "required": true }],
-  "sql": "SELECT event_type, COUNT(*) AS events FROM {{all_events}} WHERE source_app = @caller_app AND occurred_at >= @from GROUP BY event_type" }
-```
+**Generic** (shared columns only, any app): `audit-log` (every event, full detail),
+`event-type-summary`, `daily-volume`, `user-activity`, `deletions`, `ingest-latency`
+(p50/p95/max of `received_at − occurred_at`).
+
+**`continuum-home`-tagged** (a Continuum domain / its payload): `expense-spend`,
+`subscription-costs`, `watchlist-churn`, `investment-activity`.
+
+**`monolith-dashboard`-tagged** (the dashboard's own usage telemetry — it postbacks
+`REPORT_RUN` / `MCP_QUERY` events): `report-usage`, `mcp-usage`, `workspace-activity`.
+
+**Owner cross-app:** `all-apps-volume` (events per day per app across every app).
 
 - `@param` values are **bound**, never concatenated. `{{all_events}}` expands to the FQN of the
-  `events.all_events` view. `@caller_app`, when present, is the calling credential's bound
-  `sourceApp` — one definition serves every client, each seeing only its rows; a cross-app
-  credential passes `callerApp` in the run body.
-- **Allotment** is per credential in `clients.json` (`"reports": ["activity-summary", …]`, or
-  `["*"]`). A cross-app credential may run any report; a scoped one only its list.
-- Guards: `SELECT`-only single statement (enforced at startup — a non-`SELECT` or a stray `;`
-  fails the boot), `REPORTS_MAX_BYTES_BILLED`, a job timeout, and `REPORTS_MAX_ROWS` (the CSV
-  carries `X-Report-Truncated: true` past it). Shares the read rate limit.
+  `events.all_events` view. `@caller_app` is the client the run is for — a scoped credential's own
+  app, or one a cross-app credential picks via `callerApp`.
+- `"tags": ["continuum-home"]` pins a report to one or more apps: the client picker only offers
+  those and a run for any other app is a `400`. Reports that filter a Continuum-only domain
+  (`expenses`, `watchlist`, `investments`, `subscriptions`) or read its payload are tagged; the
+  generic aggregates are not.
+- **Allotment** is per credential in `clients.json` (`"reports": ["audit-log", …]` or `["*"]`).
+- Guards: `SELECT`-only single statement (enforced at startup), `REPORTS_MAX_BYTES_BILLED`, a job
+  timeout, and `REPORTS_MAX_ROWS` (`X-Report-Truncated: true` past it). Shares the read rate limit.
 
 ```bash
-curl -s https://monolith-postbacks.adithyakrishnan.com/api/v1/reports \
-  -H "Authorization: Bearer $KEY"
+curl -s https://monolith-postbacks.adithyakrishnan.com/api/v1/reports -H "Authorization: Bearer $KEY"
 
-curl -s -X POST https://monolith-postbacks.adithyakrishnan.com/api/v1/reports/activity-summary/run \
+curl -s -X POST https://monolith-postbacks.adithyakrishnan.com/api/v1/reports/audit-log/run \
   -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-  -d '{"from":"2026-08-01T00:00:00Z"}' -o activity-summary.csv
+  -d '{"from":"2026-08-01T00:00:00Z"}' -o audit-log.csv
 ```
 
+`GET /api/v1/reports` also returns `apps` — the clients this credential may run a report for.
 Adding a report is an entry in `reports.json` + a deploy. No arbitrary SQL crosses the wire.
 
 ---

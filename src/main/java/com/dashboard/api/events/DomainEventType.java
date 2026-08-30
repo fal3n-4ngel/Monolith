@@ -34,7 +34,12 @@ public enum DomainEventType {
 
     SUBSCRIPTION_CREATED("subscriptions", Action.CREATE),
     SUBSCRIPTION_UPDATED("subscriptions", Action.UPDATE),
-    SUBSCRIPTION_DELETED("subscriptions", Action.DELETE);
+    SUBSCRIPTION_DELETED("subscriptions", Action.DELETE),
+
+    // monolith-dashboard's own usage telemetry.
+    REPORT_RUN("usage", Action.CREATE),
+    MCP_QUERY("usage", Action.CREATE),
+    WORKSPACE_SIGNIN("usage", Action.CREATE);
 
     public enum Action { CREATE, UPDATE, DELETE }
 

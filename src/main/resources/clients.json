@@ -2,6 +2,8 @@
   "_comment": "Registered clients, no secrets. readScope: 'all' | 'none' | a sourceApp id. reports: reports.json ids ('[\"*\"]' = all). Key: from keyProperty, else the MONOLITH_CLIENT_KEYS secret keyed by name.",
   "clients": [
     { "name": "owner", "keyProperty": "dashboard.api-key", "readScope": "all", "reports": ["*"] },
-    { "name": "continuum", "readScope": "continuum-home", "reports": ["activity-summary", "daily-volume"] }
+    { "name": "continuum", "readScope": "continuum-home",
+      "reports": ["audit-log", "event-type-summary", "daily-volume", "user-activity", "deletions", "ingest-latency",
+        "expense-spend", "subscription-costs", "watchlist-churn", "investment-activity"] }
   ]
 }

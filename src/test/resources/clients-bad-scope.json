@@ -1,0 +1,6 @@
+{
+  "clients": [
+    { "name": "owner", "keyProperty": "dashboard.api-key", "readScope": "all" },
+    { "name": "mystery", "keyProperty": "mystery.api-key", "readScope": "not-a-registered-app" }
+  ]
+}

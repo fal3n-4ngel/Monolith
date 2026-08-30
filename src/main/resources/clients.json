@@ -1,0 +1,7 @@
+{
+  "_comment": "Registry of API clients and their read scope. NO secret values. readScope is 'all' (read every app), 'none' (ingest only), or a registered sourceApp id (read only that app). Key resolution: if 'keyProperty' is set, the key is that Spring property (the owner's dashboard.api-key <- API_KEY); otherwise it is looked up in the MONOLITH_CLIENT_KEYS secret by 'name'. Onboarding a client = one row here + its token added to MONOLITH_CLIENT_KEYS. No new Secret Manager secret, no code change. Loaded by ClientRegistry; override the path with monolith.clients-file.",
+  "clients": [
+    { "name": "owner", "keyProperty": "dashboard.api-key", "readScope": "all" },
+    { "name": "continuum", "readScope": "continuum-home" }
+  ]
+}

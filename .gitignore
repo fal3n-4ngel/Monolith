@@ -33,9 +33,11 @@ out/
 setup-secrets.ps1
 
 # Blanket-ignore JSON so a service-account key can never be committed by accident,
-# then re-admit the infrastructure config that has to be version-controlled.
+# then re-admit the infrastructure / registry config that has to be version-controlled.
 *.json
 !infra/*.json
+!src/main/resources/clients.json
+!src/test/resources/clients-*.json
 service-account.json
 key.json
 

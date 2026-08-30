@@ -1,0 +1,6 @@
+{
+  "clients": [
+    { "name": "continuum", "keyProperty": "continuum.api-key", "readScope": "continuum-home" },
+    { "name": "continuum", "keyProperty": "other.api-key", "readScope": "all" }
+  ]
+}

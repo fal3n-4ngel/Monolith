@@ -46,7 +46,7 @@ class ReportControllerIntegrationTest {
     void aCrossAppCredentialSeesEveryReportAndEveryApp() throws Exception {
         mockMvc.perform(get("/api/v1/reports").header("Authorization", ADMIN))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.reports.length()").value(16))
+                .andExpect(jsonPath("$.reports.length()").value(17))
                 .andExpect(jsonPath("$.apps").value(org.hamcrest.Matchers.hasItem("continuum-home")))
                 .andExpect(jsonPath("$.apps").value(org.hamcrest.Matchers.hasItem("monolith-dashboard")));
     }
@@ -55,7 +55,7 @@ class ReportControllerIntegrationTest {
     void aScopedCredentialSeesOnlyItsAllottedReportsAndItsOwnApp() throws Exception {
         mockMvc.perform(get("/api/v1/reports").header("Authorization", CONTINUUM))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.reports.length()").value(10))
+                .andExpect(jsonPath("$.reports.length()").value(11))
                 .andExpect(jsonPath("$.apps").value(org.hamcrest.Matchers.contains("continuum-home")));
     }
 

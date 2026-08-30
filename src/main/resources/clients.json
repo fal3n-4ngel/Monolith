@@ -4,6 +4,6 @@
     { "name": "owner", "keyProperty": "dashboard.api-key", "readScope": "all", "reports": ["*"] },
     { "name": "continuum", "readScope": "continuum-home",
       "reports": ["audit-log", "event-type-summary", "daily-volume", "user-activity", "deletions", "ingest-latency",
-        "expense-spend", "subscription-costs", "watchlist-churn", "investment-activity"] }
+        "expense-spend", "subscription-costs", "watchlist-churn", "investment-activity", "account-lifecycle"] }
   ]
 }

@@ -15,7 +15,7 @@ DATASET="events"
 # Domain tables are created per (app, domain). Add an app here and re-run to onboard it;
 # the event->table routing itself lives in DomainEventType, which is the allowlist.
 APPS=("continuum_home")
-DOMAINS=("expenses" "watchlist" "investments" "subscriptions")
+DOMAINS=("expenses" "watchlist" "investments" "subscriptions" "account")
 
 # Apps whose domains differ from the standard set, as "table:domain".
 EXTRA_TABLES=("monolith_dashboard_usage:usage")

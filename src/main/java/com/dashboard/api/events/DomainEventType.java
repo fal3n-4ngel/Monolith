@@ -36,6 +36,8 @@ public enum DomainEventType {
     SUBSCRIPTION_UPDATED("subscriptions", Action.UPDATE),
     SUBSCRIPTION_DELETED("subscriptions", Action.DELETE),
 
+    USER_DELETED("account", Action.DELETE),
+
     // monolith-dashboard's own usage telemetry.
     REPORT_RUN("usage", Action.CREATE),
     MCP_QUERY("usage", Action.CREATE),

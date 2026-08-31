@@ -62,6 +62,20 @@ class ClientKeyMapTest {
     }
 
     @Test
+    void derivedKeyFormatIsPinned() throws Exception {
+        // Fixed vector so infra/derive-app-key.{sh,ps1} and ClientKeyMap can't drift apart.
+        // Recompute independently: mono_k1_ + base64url-nopad(HMAC-SHA256(seed, "monolith:client-key:v1:" + appId)).
+        String seed = "fixed-seed-for-tests";
+        String appId = "task-app";
+        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(new javax.crypto.spec.SecretKeySpec(seed.getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] digest = mac.doFinal(("monolith:client-key:v1:" + appId).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String expected = "mono_k1_" + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+
+        assertThat(mapWithSeed("", seed).keyFor(appId)).contains(expected);
+    }
+
+    @Test
     void malformedJsonFailsFast() {
         assertThatThrownBy(() -> map("{\"continuum\": }"))
                 .isInstanceOf(IllegalStateException.class)

@@ -60,7 +60,7 @@ src/main/java/com/dashboard/api/
 ├── ingest/       # BigQuery inserts + startup schema provisioner, payload sanitiser, clock skew
 ├── query/        # Audit-log read path — parameterised, scoped per credential
 ├── reports/      # Report catalog, startup validation, BigQuery runner
-├── security/     # Client registry, derived/aggregated key map, authenticated principal
+├── security/     # Client registry, derived key map, authenticated principal
 └── notify/       # Discord heartbeat
 src/main/resources/
 ├── apps.json     # registered apps → domains + event names (drives routing + BigQuery provisioning)
@@ -118,7 +118,7 @@ Local config lives in `.env` (git-ignored); the full variable list is on the doc
 ## Security Model
 
 - **Fails closed.** No key configured → every authenticated request is rejected, loudly, at startup.
-- **No per-app secrets.** A new app's key is an HMAC of its id under one root seed (`MONOLITH_KEY_SEED`); the aggregated `MONOLITH_CLIENT_KEYS` value only pins pre-existing keys. Onboarding adds no Secret Manager entry or version.
+- **No per-app secrets.** Every app's key is an HMAC of its id under one root seed (`MONOLITH_KEY_SEED`), recomputed at auth time — nothing stored. An optional `MONOLITH_CLIENT_KEYS` secret can pin a non-derived key; nothing uses it today. Onboarding adds no Secret Manager entry or version.
 - **Header-only credentials**, compared in constant time. There is no `?key=` query fallback — that leaked into request logs and downstream `Referer` headers.
 - **Per-app read isolation.** `source_app` is set from the authenticated credential, not a request parameter; asking for another app is a `403`.
 - **Structure, not content.** Payloads carry amounts, categories, and IDs — not free-text personal data — and are sanitised on the request thread before leaving it.

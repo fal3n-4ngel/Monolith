@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
         "API_KEY=admin_test_key_A1",
-        "MONOLITH_CLIENT_KEYS=continuum=continuum_test_key_B2"
+        "MONOLITH_CLIENT_KEYS=continuum-home=continuum_test_key_B2"
 })
 @AutoConfigureMockMvc
 class AuditLogControllerIntegrationTest {

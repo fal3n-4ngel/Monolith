@@ -20,26 +20,27 @@ class ClientRegistryTest {
     }
 
     @Test
-    void loadsTheBundledRegistryWithItsScopes() {
+    void mergesTheExplicitOwnerWithAppReadbackCredentialsSynthesizedFromAppsJson() {
         ClientRegistry registry = load("classpath:clients.json");
 
         assertThat(registry.clients())
                 .extracting(ClientRegistry.ClientDefinition::name,
                         ClientRegistry.ClientDefinition::readScope)
                 .contains(
-                        org.assertj.core.groups.Tuple.tuple("owner", "all"),
-                        org.assertj.core.groups.Tuple.tuple("continuum", "continuum-home"));
+                        org.assertj.core.groups.Tuple.tuple("owner", "all"),           // explicit
+                        org.assertj.core.groups.Tuple.tuple("continuum-home", "continuum-home")); // synthesized
     }
 
     @Test
-    void onlyTheOwnerNamesADedicatedProperty_othersComeFromTheAggregatedSecretOrDerivation() {
+    void onlyTheOwnerNamesADedicatedProperty_synthesizedClientsGetADerivedOrAggregatedKey() {
         var clients = load("classpath:clients.json").clients();
 
         var owner = clients.stream().filter(c -> c.name().equals("owner")).findFirst().orElseThrow();
         assertThat(owner.keyProperty()).isEqualTo("dashboard.api-key");
 
-        var continuum = clients.stream().filter(c -> c.name().equals("continuum")).findFirst().orElseThrow();
+        var continuum = clients.stream().filter(c -> c.name().equals("continuum-home")).findFirst().orElseThrow();
         assertThat(continuum.keyProperty()).isNull();
+        assertThat(continuum.reports()).contains("audit-log", "expense-spend");
     }
 
     @Test

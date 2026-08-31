@@ -1,9 +1,6 @@
 {
-  "_comment": "Registered clients, no secrets. readScope: 'all' | 'none' | a sourceApp id. reports: reports.json ids ('[\"*\"]' = all). Key: from keyProperty, else the MONOLITH_CLIENT_KEYS secret keyed by name.",
+  "_comment": "Explicit non-derived credentials only. Every app in apps.json with a 'readback' block already gets a self-scoped credential whose key derives from its id (see ClientKeyMap / MONOLITH_KEY_SEED). Add an entry here only for the owner key or a genuine cross-app consumer. readScope: 'all' | 'none' | an app id. reports: reports.json ids ('[\"*\"]' = all).",
   "clients": [
-    { "name": "owner", "keyProperty": "dashboard.api-key", "readScope": "all", "reports": ["*"] },
-    { "name": "continuum", "readScope": "continuum-home",
-      "reports": ["audit-log", "event-type-summary", "daily-volume", "user-activity", "deletions", "ingest-latency",
-        "expense-spend", "subscription-costs", "watchlist-churn", "investment-activity", "account-lifecycle"] }
+    { "name": "owner", "keyProperty": "dashboard.api-key", "readScope": "all", "reports": ["*"] }
   ]
 }

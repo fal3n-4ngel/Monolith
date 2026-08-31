@@ -82,17 +82,23 @@ CI runs the suite, builds the image, and deploys to Cloud Run. On the new revisi
 Provisioning is idempotent and fail-soft: a re-run is a no-op, and a BigQuery hiccup is logged
 and retried on the next boot rather than failing the deploy.
 
-### The app's key
+### Handing the app its key
 
-The bearer key is deterministic:
+The bearer key is deterministic — `mono_k1_<base64url(HMAC-SHA256(MONOLITH_KEY_SEED, "monolith:client-key:v1:<app-id>"))>`
+— so there is nothing to look up after the merge. Compute it and give it to the app owner
+out-of-band:
 
+```bash
+./infra/derive-app-key.sh task-app          # reads MONOLITH_KEY_SEED from Secret Manager
 ```
-mono_k1_<base64url( HMAC-SHA256( MONOLITH_KEY_SEED, "monolith:client-key:v1:<app-id>" ) )>
+```powershell
+.\infra\derive-app-key.ps1 task-app
 ```
 
-The maintainer computes it once and hands it over out-of-band. To pin a pre-existing key
-instead, add `"<app-id>": "<token>"` to the `MONOLITH_CLIENT_KEYS` secret — an explicit entry
-always wins over derivation.
+To pin a specific key instead of deriving one (a key already in the wild, a forced rotation),
+create a `MONOLITH_CLIENT_KEYS` secret — `{"<app-id>": "<token>"}` — and add
+`MONOLITH_CLIENT_KEYS=MONOLITH_CLIENT_KEYS:latest` to `deploy.yml`'s `--set-secrets`. An explicit
+entry always wins over derivation. Nothing uses this today; every app's key is derived.
 
 > First-time setup only: the `MONOLITH_KEY_SEED` secret must exist
 > (`gcloud secrets create MONOLITH_KEY_SEED`) and be listed in `deploy.yml`'s `--set-secrets`.

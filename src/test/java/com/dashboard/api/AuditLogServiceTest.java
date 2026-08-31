@@ -59,7 +59,7 @@ class AuditLogServiceTest {
 
     @Test
     void scopedCredentialIsConfinedToItsOwnAppEvenWithNoParam() {
-        service.query(AuthenticatedClient.boundTo("continuum", CONTINUUM_HOME), query(null));
+        service.query(AuthenticatedClient.boundTo("continuum-home", CONTINUUM_HOME), query(null));
 
         assertThat(capture().sourceApp()).contains(CONTINUUM_HOME);
     }
@@ -67,7 +67,7 @@ class AuditLogServiceTest {
     @Test
     void scopedCredentialAskingForAnotherAppIsForbiddenAndNeverHitsBigQuery() {
         assertThatThrownBy(() -> service.query(
-                AuthenticatedClient.boundTo("continuum", CONTINUUM_HOME),
+                AuthenticatedClient.boundTo("continuum-home", CONTINUUM_HOME),
                 query("monolith-dashboard")))
                 .isInstanceOf(ForbiddenScopeException.class);
 
@@ -76,14 +76,14 @@ class AuditLogServiceTest {
 
     @Test
     void scopedCredentialMayRedundantlyNameItsOwnApp() {
-        service.query(AuthenticatedClient.boundTo("continuum", CONTINUUM_HOME), query("continuum-home"));
+        service.query(AuthenticatedClient.boundTo("continuum-home", CONTINUUM_HOME), query("continuum-home"));
 
         assertThat(capture().sourceApp()).contains(CONTINUUM_HOME);
     }
 
     @Test
     void aCredentialWithNoReadScopeIsForbidden() {
-        assertThatThrownBy(() -> service.query(AuthenticatedClient.noRead("continuum"), query(null)))
+        assertThatThrownBy(() -> service.query(AuthenticatedClient.noRead("continuum-home"), query(null)))
                 .isInstanceOf(ForbiddenScopeException.class);
 
         verifyNoInteractions(repository);

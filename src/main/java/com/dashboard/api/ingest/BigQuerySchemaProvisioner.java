@@ -27,8 +27,6 @@ import java.util.UUID;
  * missing per-(app, domain) table, then rebuilds {@code all_events} to union exactly the tables the
  * registry declares. Idempotent and additive — {@code CREATE TABLE IF NOT EXISTS} /
  * {@code CREATE OR REPLACE VIEW} — so the deploy that ships a new app also provisions its storage,
- * and {@code infra/setup-bigquery.sh} is only a first-time bootstrap now.
- *
  * <p>Fail-soft: a provisioning error is logged and swallowed, exactly like a dropped insert. It
  * never blocks readiness or fails a deploy.
  */

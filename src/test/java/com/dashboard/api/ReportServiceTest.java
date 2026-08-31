@@ -51,7 +51,7 @@ class ReportServiceTest {
 
     private static final AuthenticatedClient OWNER = AuthenticatedClient.crossApp("owner");
     private static final AuthenticatedClient CONTINUUM =
-            AuthenticatedClient.boundTo("continuum", new AppRef("continuum-home"));
+            AuthenticatedClient.boundTo("continuum-home", new AppRef("continuum-home"));
 
     @SuppressWarnings("unchecked")
     private Map<String, QueryParameterValue> capture() {

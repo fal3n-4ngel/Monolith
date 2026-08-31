@@ -1,0 +1,11 @@
+{
+  "apps": [
+    {
+      "id": "task-app",
+      "readback": { "reports": ["audit-log"] },
+      "events": {
+        "tasks": ["TASK_CREATED", "TASK_UPDATED", "TASK_REMOVED", "TASK_SNOOZED:update"]
+      }
+    }
+  ]
+}

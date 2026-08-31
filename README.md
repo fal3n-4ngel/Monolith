@@ -42,10 +42,10 @@ Build:      Multi-stage Docker, CDS archive for cold start, --min-instances=0
 
 ## Features
 
-- **Fail-closed ingest.** `POST /api/v1/events/postback` — an event type outside the `DomainEventType` allowlist returns `400` and stores nothing; a missing API key rejects every request rather than falling open.
+- **Fail-closed ingest.** `POST /api/v1/events/postback` — an app or event type outside the `apps.json` allowlist returns `400` and stores nothing; a missing API key rejects every request rather than falling open.
 - **Scoped audit-log reads.** `GET /api/v1/audit/logs` — newest-first history, confined server-side to the calling credential's app. A client key cannot read another app's events.
 - **Admin-authored reports.** `GET /api/v1/reports` + `POST /api/v1/reports/{id}/run` — a checked-in catalog of parameterised `SELECT`s, run on demand and streamed back as CSV. No arbitrary SQL crosses the wire.
-- **One aggregated secret for every client.** New apps land in a `{"name":"token"}` JSON secret and a `clients.json` row — the count of Secret Manager secrets never grows.
+- **Onboarding is one file.** A new app is a block in `apps.json` and a merge — no code change. On boot the BigQuery tables and the `all_events` view self-provision, and the app's key derives from its id (no Secret Manager change).
 - **Payload hardening.** Entry count, value length, and nesting depth are bounded; credential-shaped keys are redacted before anything reaches BigQuery.
 - **Off the request thread.** BigQuery inserts and Discord posts run async — telemetry never adds latency to, or fails, the flow it observes.
 - **Layered rate limiting.** A generous per-IP budget on everything, tighter per-IP *and* per-credential budgets on ingest and on each BigQuery-backed read.
@@ -56,14 +56,15 @@ Build:      Multi-stage Docker, CDS archive for cold start, --min-instances=0
 src/main/java/com/dashboard/api/
 ├── config/       # Security filter chain, rate limiting, OpenAPI, typed properties
 ├── controller/   # postback · audit-log · reports · health
-├── events/       # DomainEventType (the allowlist + routing table), SourceApp
-├── ingest/       # BigQuery inserts, payload sanitiser, clock-skew handling
+├── events/       # AppRegistry — the app + event allowlist and table routing, from apps.json
+├── ingest/       # BigQuery inserts + startup schema provisioner, payload sanitiser, clock skew
 ├── query/        # Audit-log read path — parameterised, scoped per credential
 ├── reports/      # Report catalog, startup validation, BigQuery runner
-├── security/     # Client registry, aggregated key map, authenticated principal
+├── security/     # Client registry, derived/aggregated key map, authenticated principal
 └── notify/       # Discord heartbeat
 src/main/resources/
-├── clients.json  # credential → read scope + report allotment (holds no secrets)
+├── apps.json     # registered apps → domains + event names (drives routing + BigQuery provisioning)
+├── clients.json  # owner key + cross-app consumers → read scope + report allotment (no secrets)
 └── reports.json  # admin-authored parameterised SELECT catalog
 ```
 
@@ -71,16 +72,18 @@ src/main/resources/
 
 Every event is emitted **server-to-server** by a source app's own backend, after a write has already committed there — never from a browser. That is why the endpoint can demand a credential, and does: the whole value of the warehouse is that its rows are trustworthy.
 
-An accepted postback is routed by `eventType` to `events.<app>_<domain>` — callers name an event, never a table. Every domain table shares one column set, so `all_events` unions them into a single query shape no matter which app or domain you start from. Reads (`/audit/logs`, `/reports`) go back through the same bearer auth; the credential decides which `source_app` the results are confined to. Reports bind their parameters, cap bytes billed, and filter to production events.
+An accepted postback is routed by `eventType` to `events.<app>_<domain>` — callers name an event, never a table. The app + event allowlist and that routing come from `apps.json`; a new app is a block there and a merge, and the deploy self-provisions its BigQuery tables and rebuilds `all_events`. Every domain table shares one column set, so `all_events` unions them into a single query shape no matter which app or domain you start from. Reads (`/audit/logs`, `/reports`) go back through the same bearer auth; the credential decides which `source_app` the results are confined to. Reports bind their parameters, cap bytes billed, and filter to production events.
+
+Onboarding a new app: [`APP_INTEGRATION_GUIDE.md`](APP_INTEGRATION_GUIDE.md).
 
 ```mermaid
 flowchart LR
-  A[Continuum Home] -->|postback| M
-  B[Monolith Dashboard] -->|postback| M
-  C[Future app] -->|postback| M
-  M[Monolith API<br/>allowlist · route · sanitise] --> BQ[(BigQuery<br/>per-app tables + all_events)]
-  M -. heartbeat .-> D[Discord]
-  BQ --> R[/audit/logs · /reports → CSV/]
+  A["Continuum Home"] -->|postback| M
+  B["Monolith Dashboard"] -->|postback| M
+  C["Future app"] -->|postback| M
+  M["Monolith API<br/>allowlist, route, sanitise"] --> BQ[("BigQuery<br/>per-app tables + all_events")]
+  M -. heartbeat .-> D["Discord"]
+  BQ --> R["/audit/logs, /reports to CSV"]
   M --> R
 ```
 
@@ -115,7 +118,7 @@ Local config lives in `.env` (git-ignored); the full variable list is on the doc
 ## Security Model
 
 - **Fails closed.** No key configured → every authenticated request is rejected, loudly, at startup.
-- **No per-app secrets.** Client keys live in one aggregated Secret Manager value; onboarding an app is a new version of it, not a new secret.
+- **No per-app secrets.** A new app's key is an HMAC of its id under one root seed (`MONOLITH_KEY_SEED`); the aggregated `MONOLITH_CLIENT_KEYS` value only pins pre-existing keys. Onboarding adds no Secret Manager entry or version.
 - **Header-only credentials**, compared in constant time. There is no `?key=` query fallback — that leaked into request logs and downstream `Referer` headers.
 - **Per-app read isolation.** `source_app` is set from the authenticated credential, not a request parameter; asking for another app is a `403`.
 - **Structure, not content.** Payloads carry amounts, categories, and IDs — not free-text personal data — and are sanitised on the request thread before leaving it.

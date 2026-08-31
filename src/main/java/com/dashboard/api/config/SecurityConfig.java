@@ -1,5 +1,6 @@
 package com.dashboard.api.config;
 
+import com.dashboard.api.events.AppRegistry;
 import com.dashboard.api.security.ClientKeyMap;
 import com.dashboard.api.security.ClientRegistry;
 import org.springframework.beans.factory.annotation.Value;
@@ -50,8 +51,9 @@ public class SecurityConfig {
     public ApiKeyAuthFilter apiKeyAuthFilter(Environment environment,
                                              ClientRegistry clientRegistry,
                                              ClientKeyMap clientKeyMap,
+                                             AppRegistry appRegistry,
                                              @Value("${dashboard.allowed-email:}") String allowedEmail) {
-        return new ApiKeyAuthFilter(environment, clientRegistry, clientKeyMap, allowedEmail);
+        return new ApiKeyAuthFilter(environment, clientRegistry, clientKeyMap, appRegistry, allowedEmail);
     }
 
     @Bean

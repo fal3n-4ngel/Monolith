@@ -12,7 +12,11 @@ class ClientKeyMapTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private ClientKeyMap map(String raw) {
-        return new ClientKeyMap(MAPPER, raw);
+        return new ClientKeyMap(MAPPER, raw, null);
+    }
+
+    private ClientKeyMap mapWithSeed(String raw, String seed) {
+        return new ClientKeyMap(MAPPER, raw, seed);
     }
 
     @Test
@@ -40,8 +44,21 @@ class ClientKeyMapTest {
     }
 
     @Test
-    void unknownClientHasNoKey() {
+    void unknownClientHasNoKeyWithoutASeed() {
         assertThat(map("continuum=tok_c").keyFor("nope")).isEmpty();
+        assertThat(map("continuum=tok_c").canDerive()).isFalse();
+    }
+
+    @Test
+    void withASeedAnUnpinnedClientGetsADeterministicDerivedKey() {
+        ClientKeyMap keys = mapWithSeed("continuum=tok_c", "root-seed-value");
+
+        assertThat(keys.keyFor("continuum")).contains("tok_c");           // explicit still wins
+        String derived = keys.keyFor("new-app").orElseThrow();
+        assertThat(derived).startsWith("mono_k1_");
+        assertThat(keys.keyFor("new-app")).contains(derived);            // stable
+        assertThat(mapWithSeed("", "root-seed-value").keyFor("new-app")).contains(derived); // seed-only
+        assertThat(keys.deriveKey("other-app")).isNotEqualTo(keys.deriveKey("new-app"));
     }
 
     @Test

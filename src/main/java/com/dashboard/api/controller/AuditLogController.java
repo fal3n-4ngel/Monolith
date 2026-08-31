@@ -2,6 +2,7 @@ package com.dashboard.api.controller;
 
 import com.dashboard.api.dto.AuditLogPage;
 import com.dashboard.api.dto.AuditLogQuery;
+import com.dashboard.api.events.AppRegistry;
 import com.dashboard.api.query.AuditLogService;
 import com.dashboard.api.security.AuthenticatedClient;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,9 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuditLogController {
 
     private final AuditLogService service;
+    private final AppRegistry appRegistry;
 
-    public AuditLogController(AuditLogService service) {
+    public AuditLogController(AuditLogService service, AppRegistry appRegistry) {
         this.service = service;
+        this.appRegistry = appRegistry;
     }
 
     @Operation(summary = "Query domain-event history, newest first, scoped to the calling credential's app",
@@ -37,7 +40,7 @@ public class AuditLogController {
             @RequestParam(required = false) Integer limit,
             Authentication authentication) {
 
-        AuditLogQuery request = AuditLogQuery.parse(sourceApp, userId, domain, eventType, from, before, limit);
+        AuditLogQuery request = AuditLogQuery.parse(appRegistry, sourceApp, userId, domain, eventType, from, before, limit);
         return service.query(AuthenticatedClient.require(authentication), request);
     }
 }

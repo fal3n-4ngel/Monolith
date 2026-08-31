@@ -1,7 +1,7 @@
 package com.dashboard.api.reports;
 
 import com.dashboard.api.config.ReportProperties;
-import com.dashboard.api.events.SourceApp;
+import com.dashboard.api.events.AppRegistry;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -54,8 +54,11 @@ public class ReportRegistry {
     }
 
     private final List<ReportDefinition> reports;
+    private final AppRegistry appRegistry;
 
-    public ReportRegistry(ResourceLoader resourceLoader, ObjectMapper objectMapper, ReportProperties props) {
+    public ReportRegistry(ResourceLoader resourceLoader, ObjectMapper objectMapper, ReportProperties props,
+                          AppRegistry appRegistry) {
+        this.appRegistry = appRegistry;
         String location = props.file();
         Resource resource = resourceLoader.getResource(location);
         if (!resource.exists()) {
@@ -93,9 +96,9 @@ public class ReportRegistry {
             }
             requireReadOnlySelect(report);
             for (String tag : report.tags()) {
-                if (SourceApp.parse(tag).isEmpty()) {
+                if (appRegistry.resolveApp(tag).isEmpty()) {
                     throw new IllegalStateException("Report '" + report.id() + "' tag '" + tag
-                            + "' is not a registered sourceApp");
+                            + "' is not a registered app id");
                 }
             }
             for (ParamSpec param : report.params()) {

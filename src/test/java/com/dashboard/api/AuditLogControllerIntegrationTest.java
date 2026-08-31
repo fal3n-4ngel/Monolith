@@ -1,7 +1,7 @@
 package com.dashboard.api;
 
 import com.dashboard.api.dto.AuditLogEntry;
-import com.dashboard.api.events.SourceApp;
+import com.dashboard.api.events.AppRef;
 import com.dashboard.api.query.BigQueryAuditLogRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -70,7 +70,7 @@ class AuditLogControllerIntegrationTest {
         ArgumentCaptor<BigQueryAuditLogRepository.Criteria> captor =
                 ArgumentCaptor.forClass(BigQueryAuditLogRepository.Criteria.class);
         verify(repository).search(captor.capture());
-        assertThat(captor.getValue().sourceApp()).contains(SourceApp.CONTINUUM_HOME);
+        assertThat(captor.getValue().sourceApp()).contains(new AppRef("continuum-home"));
     }
 
     @Test

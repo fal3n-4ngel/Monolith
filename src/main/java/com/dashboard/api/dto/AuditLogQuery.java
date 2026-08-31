@@ -1,7 +1,7 @@
 package com.dashboard.api.dto;
 
-import com.dashboard.api.events.DomainEventType;
-import com.dashboard.api.events.SourceApp;
+import com.dashboard.api.events.AppRef;
+import com.dashboard.api.events.AppRegistry;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -11,24 +11,24 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * A validated {@code GET /audit/logs} request. Filters are checked against the ingest allowlists
- * ({@link SourceApp}, {@link DomainEventType}); scope is decided elsewhere, from the credential.
+ * A validated {@code GET /audit/logs} request. Filters are checked against the app registry
+ * (app id, domain, event name); scope is decided elsewhere, from the credential.
  */
 public record AuditLogQuery(
-        Optional<SourceApp> sourceApp,
+        Optional<AppRef> sourceApp,
         String userId,
         String domain,
-        DomainEventType eventType,
+        String eventType,
         Instant from,
         Instant before,
         Integer limit
 ) {
 
-    public static AuditLogQuery parse(String sourceApp, String userId, String domain, String eventType,
-                                      String from, String before, Integer limit) {
-        Optional<SourceApp> app = Optional.empty();
+    public static AuditLogQuery parse(AppRegistry registry, String sourceApp, String userId, String domain,
+                                      String eventType, String from, String before, Integer limit) {
+        Optional<AppRef> app = Optional.empty();
         if (hasText(sourceApp)) {
-            app = SourceApp.parse(sourceApp);
+            app = registry.resolveApp(sourceApp);
             if (app.isEmpty()) {
                 throw badRequest("unknown sourceApp: " + sourceApp);
             }
@@ -37,21 +37,22 @@ public record AuditLogQuery(
         String domainClean = null;
         if (hasText(domain)) {
             domainClean = domain.trim().toLowerCase(Locale.ROOT);
-            if (!DomainEventType.domains().contains(domainClean)) {
+            if (!registry.domains().contains(domainClean)) {
                 throw badRequest("unknown domain: " + domain);
             }
         }
 
-        DomainEventType type = null;
+        String eventName = null;
         if (hasText(eventType)) {
-            type = DomainEventType.parse(eventType)
-                    .orElseThrow(() -> badRequest("unknown eventType: " + eventType));
+            eventName = registry.resolveEventAnywhere(eventType)
+                    .orElseThrow(() -> badRequest("unknown eventType: " + eventType))
+                    .name();
         }
 
         Instant fromTs = parseInstant(from, "from");
         Instant beforeTs = parseInstant(before, "before");
 
-        return new AuditLogQuery(app, hasText(userId) ? userId.trim() : null, domainClean, type, fromTs, beforeTs, limit);
+        return new AuditLogQuery(app, hasText(userId) ? userId.trim() : null, domainClean, eventName, fromTs, beforeTs, limit);
     }
 
     private static Instant parseInstant(String raw, String field) {

@@ -1,7 +1,8 @@
 package com.dashboard.api.reports;
 
 import com.dashboard.api.dto.ReportSummary;
-import com.dashboard.api.events.SourceApp;
+import com.dashboard.api.events.AppRef;
+import com.dashboard.api.events.AppRegistry;
 import com.dashboard.api.reports.ReportRegistry.ParamSpec;
 import com.dashboard.api.reports.ReportRegistry.ReportDefinition;
 import com.dashboard.api.security.AuthenticatedClient;
@@ -15,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,11 +35,14 @@ public class ReportService {
     private final ReportRegistry registry;
     private final ClientRegistry clients;
     private final BigQueryReportRunner runner;
+    private final AppRegistry appRegistry;
 
-    public ReportService(ReportRegistry registry, ClientRegistry clients, BigQueryReportRunner runner) {
+    public ReportService(ReportRegistry registry, ClientRegistry clients, BigQueryReportRunner runner,
+                         AppRegistry appRegistry) {
         this.registry = registry;
         this.clients = clients;
         this.runner = runner;
+        this.appRegistry = appRegistry;
     }
 
     public List<ReportSummary> available(AuthenticatedClient client) {
@@ -52,7 +55,7 @@ public class ReportService {
     /** Clients this credential may run a report for: all of them for a cross-app credential, else its own. */
     public List<String> selectableApps(AuthenticatedClient client) {
         if (client.isCrossApp()) {
-            return Arrays.stream(SourceApp.values()).map(SourceApp::appId).toList();
+            return appRegistry.appIds();
         }
         return client.boundApp().map(app -> List.of(app.appId())).orElse(List.of());
     }
@@ -106,11 +109,11 @@ public class ReportService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "callerApp is required for a cross-app credential on this report");
             }
-            return SourceApp.parse(requested)
+            return appRegistry.resolveApp(requested)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "unknown callerApp: " + requested))
                     .appId();
         }
-        SourceApp bound = client.boundApp()
+        AppRef bound = client.boundApp()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "this credential has no app scope"));
         if (requested != null && !requested.isBlank() && !requested.trim().equalsIgnoreCase(bound.appId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "this credential is scoped to '" + bound.appId() + "'");

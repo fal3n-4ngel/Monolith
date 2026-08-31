@@ -1,6 +1,7 @@
 package com.dashboard.api;
 
 import com.dashboard.api.config.ReportProperties;
+import com.dashboard.api.events.AppRegistry;
 import com.dashboard.api.reports.ReportRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -11,9 +12,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ReportRegistryTest {
 
+    private static final AppRegistry APPS =
+            new AppRegistry(new DefaultResourceLoader(), new ObjectMapper(), "classpath:apps.json");
+
     private ReportRegistry load(String location) {
         ReportProperties props = new ReportProperties(location, 200_000_000L, 30_000L, 50_000);
-        return new ReportRegistry(new DefaultResourceLoader(), new ObjectMapper(), props);
+        return new ReportRegistry(new DefaultResourceLoader(), new ObjectMapper(), props, APPS);
     }
 
     @Test

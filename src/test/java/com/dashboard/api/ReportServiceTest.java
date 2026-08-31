@@ -1,7 +1,8 @@
 package com.dashboard.api;
 
 import com.dashboard.api.config.ReportProperties;
-import com.dashboard.api.events.SourceApp;
+import com.dashboard.api.events.AppRef;
+import com.dashboard.api.events.AppRegistry;
 import com.dashboard.api.reports.BigQueryReportRunner;
 import com.dashboard.api.reports.ReportRegistry;
 import com.dashboard.api.reports.ReportService;
@@ -36,20 +37,21 @@ class ReportServiceTest {
     void setUp() {
         DefaultResourceLoader loader = new DefaultResourceLoader();
         ObjectMapper mapper = new ObjectMapper();
+        AppRegistry apps = new AppRegistry(loader, mapper, "classpath:apps.json");
         ReportRegistry reports = new ReportRegistry(loader, mapper,
-                new ReportProperties("classpath:reports.json", 0L, 0L, 100));
-        ClientRegistry clients = new ClientRegistry(loader, mapper, "classpath:clients.json");
+                new ReportProperties("classpath:reports.json", 0L, 0L, 100), apps);
+        ClientRegistry clients = new ClientRegistry(loader, mapper, apps, "classpath:clients.json");
 
         runner = mock(BigQueryReportRunner.class);
         when(runner.run(anyString(), any()))
                 .thenReturn(new BigQueryReportRunner.Result(List.of("x"), List.of(List.of("1")), false));
 
-        service = new ReportService(reports, clients, runner);
+        service = new ReportService(reports, clients, runner, apps);
     }
 
     private static final AuthenticatedClient OWNER = AuthenticatedClient.crossApp("owner");
     private static final AuthenticatedClient CONTINUUM =
-            AuthenticatedClient.boundTo("continuum", SourceApp.CONTINUUM_HOME);
+            AuthenticatedClient.boundTo("continuum", new AppRef("continuum-home"));
 
     @SuppressWarnings("unchecked")
     private Map<String, QueryParameterValue> capture() {

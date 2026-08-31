@@ -54,10 +54,15 @@ dashboard:
   gcp:
     project-id: ${GCP_PROJECT_ID:portfolio-api-505006}
 
-# Client registry (names + read scope + report allotment; no secrets). Non-owner keys come from
-# the aggregated MONOLITH_CLIENT_KEYS secret. See com.dashboard.api.security.ClientRegistry.
+# App + credential registries (no secrets). apps.json is the app/event allowlist and drives
+# BigQuery provisioning; clients.json holds the owner key and any cross-app consumer. Non-owner
+# keys come from the MONOLITH_CLIENT_KEYS secret or derive from MONOLITH_KEY_SEED.
+# See com.dashboard.api.events.AppRegistry and com.dashboard.api.security.ClientRegistry.
 monolith:
+  apps-file: ${MONOLITH_APPS_FILE:classpath:apps.json}
   clients-file: ${MONOLITH_CLIENTS_FILE:classpath:clients.json}
+  # On startup, create any missing per-(app, domain) table and rebuild all_events to match apps.json.
+  provision-bigquery: ${MONOLITH_PROVISION_BIGQUERY:true}
 
 # Report catalog and per-run cost guards. See com.dashboard.api.reports.ReportRegistry.
 reports:

@@ -7,30 +7,73 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * All non-owner client keys in one {@code MONOLITH_CLIENT_KEYS} secret — a {@code name -> token}
- * map, accepted as JSON or {@code name=token,...} CSV. Adding a client is a new version of this
- * one secret rather than a new secret.
+ * Resolves a registered client's API key.
+ *
+ * <p>Two sources, checked in order:
+ * <ol>
+ *   <li>An explicit entry in the {@code MONOLITH_CLIENT_KEYS} secret ({@code name -> token}, JSON or
+ *       {@code name=token,...} CSV) — used to pin a pre-existing key.</li>
+ *   <li>Otherwise, a value derived from the client name and the {@code MONOLITH_KEY_SEED} secret,
+ *       so a newly registered app needs no secret change at all.</li>
+ * </ol>
+ * With neither configured for a name, the client simply cannot authenticate.
  */
 @Component
 public class ClientKeyMap {
 
     private static final Logger log = LoggerFactory.getLogger(ClientKeyMap.class);
+    private static final String HMAC = "HmacSHA256";
+    private static final String KEY_VERSION = "k1";
+    private static final String DERIVATION_CONTEXT = "monolith:client-key:v1:";
 
     private final Map<String, String> keysByName;
+    private final byte[] seed;
 
-    public ClientKeyMap(ObjectMapper objectMapper, @Value("${MONOLITH_CLIENT_KEYS:}") String raw) {
+    public ClientKeyMap(ObjectMapper objectMapper,
+                        @Value("${MONOLITH_CLIENT_KEYS:}") String raw,
+                        @Value("${MONOLITH_KEY_SEED:}") String seed) {
         this.keysByName = parse(objectMapper, raw);
-        log.info("[Auth] Loaded {} client key(s) from MONOLITH_CLIENT_KEYS", keysByName.size());
+        this.seed = (seed == null || seed.isBlank()) ? null : seed.trim().getBytes(StandardCharsets.UTF_8);
+        log.info("[Auth] Loaded {} explicit client key(s); key derivation {}",
+                keysByName.size(), this.seed == null ? "OFF (no MONOLITH_KEY_SEED)" : "ON");
     }
 
     public Optional<String> keyFor(String clientName) {
-        String token = keysByName.get(clientName);
-        return (token == null || token.isBlank()) ? Optional.empty() : Optional.of(token.trim());
+        String explicit = keysByName.get(clientName);
+        if (explicit != null && !explicit.isBlank()) {
+            return Optional.of(explicit.trim());
+        }
+        return deriveKey(clientName);
+    }
+
+    /** The deterministic key for a client name, if a seed is configured. */
+    public Optional<String> deriveKey(String clientName) {
+        if (seed == null || clientName == null || clientName.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            Mac mac = Mac.getInstance(HMAC);
+            mac.init(new SecretKeySpec(seed, HMAC));
+            byte[] digest = mac.doFinal((DERIVATION_CONTEXT + clientName.trim()).getBytes(StandardCharsets.UTF_8));
+            String body = Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+            return Optional.of("mono_" + KEY_VERSION + "_" + body);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("could not derive client key", e);
+        }
+    }
+
+    public boolean canDerive() {
+        return seed != null;
     }
 
     public int size() {

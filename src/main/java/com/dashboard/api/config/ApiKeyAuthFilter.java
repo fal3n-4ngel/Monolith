@@ -1,5 +1,6 @@
 package com.dashboard.api.config;
 
+import com.dashboard.api.events.AppRegistry;
 import com.dashboard.api.security.AuthenticatedClient;
 import com.dashboard.api.security.ClientKeyMap;
 import com.dashboard.api.security.ClientRegistry;
@@ -51,10 +52,14 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     public ApiKeyAuthFilter(Environment environment,
                             ClientRegistry clientRegistry,
                             ClientKeyMap clientKeyMap,
+                            AppRegistry appRegistry,
                             @Value("${dashboard.allowed-email:}") String allowedEmail) {
         this.keyBindings = new ArrayList<>();
         for (ClientRegistry.ClientDefinition client : clientRegistry.clients()) {
-            String source = hasText(client.keyProperty()) ? client.keyProperty() : "MONOLITH_CLIENT_KEYS[" + client.name() + "]";
+            String source = hasText(client.keyProperty())
+                    ? client.keyProperty()
+                    : (clientKeyMap.canDerive() ? "MONOLITH_CLIENT_KEYS/derived[" + client.name() + "]"
+                                                : "MONOLITH_CLIENT_KEYS[" + client.name() + "]");
             String token = hasText(client.keyProperty())
                     ? environment.getProperty(client.keyProperty())
                     : clientKeyMap.keyFor(client.name()).orElse(null);
@@ -63,7 +68,7 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
                         client.name(), source);
                 continue;
             }
-            addKey(token, AuthenticatedClient.fromScope(client.name(), client.readScope()));
+            addKey(token, AuthenticatedClient.fromScope(client.name(), client.readScope(), appRegistry.appIds()));
         }
         this.allowedEmail = allowedEmail == null ? "" : allowedEmail.trim();
 

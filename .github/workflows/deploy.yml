@@ -95,7 +95,9 @@ jobs:
             --no-cpu-throttling \
             --timeout=30s \
             --set-env-vars="GCP_PROJECT_ID=${{ env.PROJECT_ID }},AUDIT_RATE_LIMIT_PER_MINUTE=120" \
-            --set-secrets="API_KEY=API_KEY:latest,MONOLITH_CLIENT_KEYS=MONOLITH_CLIENT_KEYS:latest,DISCORD_WEBHOOK_URL=DISCORD_WEBHOOK_URL:latest"
+            # MONOLITH_KEY_SEED derives new apps' API keys (see ClientKeyMap). Create it once
+            # (`gcloud secrets create MONOLITH_KEY_SEED`) before adding it to the list below.
+            --set-secrets="API_KEY=API_KEY:latest,MONOLITH_CLIENT_KEYS=MONOLITH_CLIENT_KEYS:latest,MONOLITH_KEY_SEED=MONOLITH_KEY_SEED:latest,DISCORD_WEBHOOK_URL=DISCORD_WEBHOOK_URL:latest"
 
       - name: Verify the new revision is serving
         run: |

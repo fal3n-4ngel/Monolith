@@ -36,8 +36,10 @@ setup-secrets.ps1
 # then re-admit the infrastructure / registry config that has to be version-controlled.
 *.json
 !infra/*.json
+!src/main/resources/apps.json
 !src/main/resources/clients.json
 !src/main/resources/reports.json
+!src/test/resources/apps-*.json
 !src/test/resources/clients-*.json
 !src/test/resources/reports-*.json
 service-account.json

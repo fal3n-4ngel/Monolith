@@ -4,7 +4,7 @@ import com.dashboard.api.config.AuditProperties;
 import com.dashboard.api.dto.AuditLogEntry;
 import com.dashboard.api.dto.AuditLogPage;
 import com.dashboard.api.dto.AuditLogQuery;
-import com.dashboard.api.events.SourceApp;
+import com.dashboard.api.events.AppRef;
 import com.dashboard.api.security.AuthenticatedClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +34,7 @@ public class AuditLogService {
     }
 
     public AuditLogPage query(AuthenticatedClient client, AuditLogQuery request) {
-        Optional<SourceApp> scope = resolveScope(client, request.sourceApp());
+        Optional<AppRef> scope = resolveScope(client, request.sourceApp());
 
         int limit = clampLimit(request.limit());
         Instant from = request.from() != null
@@ -45,7 +45,7 @@ public class AuditLogService {
                 scope,
                 request.userId(),
                 request.domain(),
-                request.eventType() == null ? null : request.eventType().name(),
+                request.eventType(),
                 from,
                 request.before(),
                 limit);
@@ -53,24 +53,24 @@ public class AuditLogService {
         List<AuditLogEntry> rows = repository.search(criteria);
 
         String nextBefore = rows.size() == limit ? rows.get(rows.size() - 1).occurredAt() : null;
-        String scopeLabel = scope.map(SourceApp::appId).orElse("all");
+        String scopeLabel = scope.map(AppRef::appId).orElse("all");
 
         log.info("[AuditLog] served rows={} scope={} user={} domain={} eventType={} client={}",
                 rows.size(), scopeLabel, request.userId(), request.domain(),
-                request.eventType() == null ? null : request.eventType().name(), client.name());
+                request.eventType(), client.name());
 
         return new AuditLogPage(scopeLabel, rows.size(), rows, nextBefore);
     }
 
-    private Optional<SourceApp> resolveScope(AuthenticatedClient client, Optional<SourceApp> requested) {
+    private Optional<AppRef> resolveScope(AuthenticatedClient client, Optional<AppRef> requested) {
         if (client.isCrossApp()) {
             return requested;
         }
         if (client.boundApp().isEmpty()) {
             throw new ForbiddenScopeException("this credential has no audit-log read access");
         }
-        SourceApp bound = client.boundApp().get();
-        if (requested.isPresent() && requested.get() != bound) {
+        AppRef bound = client.boundApp().get();
+        if (requested.isPresent() && !requested.get().equals(bound)) {
             throw new ForbiddenScopeException(
                     "this credential is scoped to '" + bound.appId() + "' and cannot read '"
                             + requested.get().appId() + "'");

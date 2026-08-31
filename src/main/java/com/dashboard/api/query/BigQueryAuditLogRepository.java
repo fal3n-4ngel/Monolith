@@ -2,7 +2,7 @@ package com.dashboard.api.query;
 
 import com.dashboard.api.config.AuditProperties;
 import com.dashboard.api.dto.AuditLogEntry;
-import com.dashboard.api.events.SourceApp;
+import com.dashboard.api.events.AppRef;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.cloud.bigquery.BigQuery;
@@ -49,7 +49,7 @@ public class BigQueryAuditLogRepository {
 
     /** Already-scoped criteria; {@code sourceApp} empty means every app. */
     public record Criteria(
-            Optional<SourceApp> sourceApp,
+            Optional<AppRef> sourceApp,
             String userId,
             String domain,
             String eventType,

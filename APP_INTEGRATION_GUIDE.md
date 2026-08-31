@@ -1,69 +1,121 @@
 # 🚀 Monolith Application Integration Guide
 
-This guide provides step-by-step technical instructions for connecting a new application to Monolith's server-to-server telemetry ingestion engine and BigQuery analytical data warehouse.
+How to connect a new application to Monolith's server-to-server event ingest and its BigQuery
+warehouse. Onboarding is **one file change and a merge** — no Java edits, no manual BigQuery
+setup, no new Secret Manager entry.
 
 ---
 
-## 📋 Integration Process Overview
+## Integration at a glance
 
 ```
-[ Step 1: GitHub Ticket ] ──► [ Step 2: Monolith Provisioning ] ──► [ Step 3: Dispatch Helper ]
- Submit app name & events       Register SourceApp & Domain       Implement non-blocking POST
+[ 1. Ticket ]  ──►  [ 2. One PR: a block in apps.json ]  ──►  [ 3. Merge ]  ──►  [ 4. Wire up the postback ]
+ app id + events        adds the app to the allowlist          CI deploys;         non-blocking POST from
+                        (+ optional reports.json block)        tables + view +      your backend
+                                                               API key auto-
+                                                               provision on boot
 ```
 
 ---
 
-## Step 1: Submit Integration Ticket (GitHub Board #4)
-To maintain fail-closed schema security, Monolith validates every incoming `sourceApp` and `eventType` against server enums (`SourceApp.java` and `DomainEventType.java`).
+## Step 1 — Open an integration ticket
 
-1. Open an integration ticket on **[GitHub Project Board #4](https://github.com/users/fal3n-4ngel/projects/4)**.
-2. Provide your integration parameters:
-   - **`sourceApp`**: Unique application identifier (e.g., `"my-task-app"`).
-   - **`Domain`**: Target domain group (e.g., `"tasks"`, `"finance"`, `"media"`).
-   - **`DomainEventTypes`**: List of event names to allowlist (e.g., `"TASK_CREATED"`, `"TASK_COMPLETED"`).
+Open a ticket on **[GitHub Project Board 4](https://github.com/users/fal3n-4ngel/projects/4)**
+using the **App Integration Request** template, stating:
 
----
-
-## Step 2: Monolith Allowlist & Table Provisioning
-Upon ticket approval, the Monolith maintainer provisions:
-1. **`SourceApp.java`**: Adds enum constant `MY_TASK_APP("my-task-app")`.
-2. **`DomainEventType.java`**: Registers event enums (e.g., `TASK_COMPLETED("tasks", Action.CREATE)`).
-3. **BigQuery Destination Table**: Provisions `portfolio-api-505006.events.my_task_app_tasks` with:
-   - **Partitioning:** `DAY on occurred_at (Permanent / Infinite Retention - No Expiration)`
-   - **Clustering:** `(local_user_id, event_type)`
+- **App id** — lowercase, dashes only, e.g. `task-app`. Becomes the `sourceApp` value and the
+  BigQuery table prefix (`task_app_*`).
+- **Domains** — the groupings your events fall into, e.g. `tasks`, `projects`.
+- **Event names** — `UPPER_SNAKE_CASE`, unique across every app, e.g. `TASK_CREATED`,
+  `TASK_COMPLETED`. Names ending `_CREATED/_ADDED/_LOGGED`, `_UPDATED/_CHANGED`,
+  `_DELETED/_REMOVED` get their action inferred; anything else needs `:create|update|delete`.
+- **Read-back?** — whether the app should be able to `GET` its own history, and which
+  `reports.json` reports it may run (if any).
 
 ---
 
-## Step 3: Implement Postback Dispatcher in Your App
+## Step 2 — One PR: add the app to `apps.json`
 
-### 📡 Ingestion Endpoint
-- **URL:** `POST https://monolith-postbacks.adithyakrishnan.com/api/v1/events/postback`
-- **Header:** `Authorization: Bearer <MONOLITH_API_KEY>` or `Authorization: Bearer <GOOGLE_ID_TOKEN>`
-- **Content-Type:** `application/json`
+Add a block to [`src/main/resources/apps.json`](src/main/resources/apps.json):
 
-### 📦 Standard JSON Postback Payload
 ```json
 {
-  "sourceApp": "my-task-app",
+  "id": "task-app",
+  "readback": { "reports": ["audit-log"] },
+  "events": {
+    "tasks":    ["TASK_CREATED", "TASK_UPDATED", "TASK_COMPLETED:update", "TASK_DELETED"],
+    "projects": ["PROJECT_CREATED", "PROJECT_ARCHIVED"]
+  }
+}
+```
+
+- Omit `readback` entirely if the app only writes.
+- To pin domain-specific reports to this app, add them to
+  [`reports.json`](src/main/resources/reports.json) with `"tags": ["task-app"]` in the same PR.
+
+Startup validation rejects a malformed id, a duplicate or suffix-less event name, or a report
+tag that isn't a registered app — so a bad PR fails CI, not production.
+
+---
+
+## Step 3 — Merge
+
+CI runs the suite, builds the image, and deploys to Cloud Run. On the new revision's first boot:
+
+| What | Where | Result |
+| :--- | :--- | :--- |
+| **BigQuery tables** | `BigQuerySchemaProvisioner` | `task_app_tasks`, `task_app_projects` created (`CREATE TABLE IF NOT EXISTS`), partitioned by day, clustered on `(local_user_id, event_type)`. |
+| **`all_events` view** | same | Rebuilt (`CREATE OR REPLACE VIEW`) to union the new tables, so read-back and reports see them immediately. |
+| **API key** | `ClientKeyMap` | Derived from the app id and the `MONOLITH_KEY_SEED` secret — no Secret Manager change. |
+| **Read credential** | `ClientRegistry` | If `readback` was set, a self-scoped credential named `task-app` is synthesized automatically. |
+
+Provisioning is idempotent and fail-soft: a re-run is a no-op, and a BigQuery hiccup is logged
+and retried on the next boot rather than failing the deploy.
+
+### The app's key
+
+The bearer key is deterministic:
+
+```
+mono_k1_<base64url( HMAC-SHA256( MONOLITH_KEY_SEED, "monolith:client-key:v1:<app-id>" ) )>
+```
+
+The maintainer computes it once and hands it over out-of-band. To pin a pre-existing key
+instead, add `"<app-id>": "<token>"` to the `MONOLITH_CLIENT_KEYS` secret — an explicit entry
+always wins over derivation.
+
+> First-time setup only: the `MONOLITH_KEY_SEED` secret must exist
+> (`gcloud secrets create MONOLITH_KEY_SEED`) and be listed in `deploy.yml`'s `--set-secrets`.
+
+---
+
+## Step 4 — Emit events from your app
+
+Server-to-server, after the write has committed in your own database — never from a browser.
+
+### Endpoint
+
+- **URL:** `POST https://monolith-postbacks.adithyakrishnan.com/api/v1/events/postback`
+- **Header:** `Authorization: Bearer <your key>`
+- **Content-Type:** `application/json`
+
+### Payload
+
+```json
+{
+  "sourceApp": "task-app",
   "eventId": "a7b8c9d0-1234-5678-90ab-cdef12345678",
   "eventType": "TASK_COMPLETED",
   "userId": "usr_99182",
   "entityId": "task_4412",
   "itemCount": 1,
   "timestamp": 1787726400000,
-  "payload": {
-    "userEmail": "user@example.com",
-    "title": "Complete Monolith Integration",
-    "environment": "production"
-  }
+  "payload": { "userEmail": "user@example.com", "environment": "production" }
 }
 ```
 
----
+### Reference dispatcher (TypeScript / Next.js)
 
-## 💻 Code Reference Implementation
-
-### TypeScript / Next.js
 ```typescript
 import { after } from "next/server";
 
@@ -72,17 +124,17 @@ export function recordDomainEvent(event: {
   userId: string;
   userEmail: string;
   entityId?: string;
-  payload?: Record<string, any>;
+  payload?: Record<string, unknown>;
 }) {
   after(async () => {
     await fetch("https://monolith-postbacks.adithyakrishnan.com/api/v1/events/postback", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.MONOLITH_API_KEY}`,
+        Authorization: `Bearer ${process.env.MONOLITH_API_KEY}`,
       },
       body: JSON.stringify({
-        sourceApp: "my-task-app",
+        sourceApp: "task-app",
         eventId: crypto.randomUUID(),
         eventType: event.eventType,
         userId: event.userId,
@@ -100,41 +152,15 @@ export function recordDomainEvent(event: {
 }
 ```
 
-### Python
-```python
-import requests
-import uuid
-import time
-import os
-
-def send_domain_event(event_type: str, user_id: str, user_email: str, payload: dict):
-    url = "https://monolith-postbacks.adithyakrishnan.com/api/v1/events/postback"
-    headers = {
-        "Authorization": f"Bearer {os.environ['MONOLITH_API_KEY']}",
-        "Content-Type": "application/json"
-    }
-    body = {
-        "sourceApp": "my-python-app",
-        "eventId": str(uuid.uuid4()),
-        "eventType": event_type,
-        "userId": user_id,
-        "timestamp": int(time.time() * 1000),
-        "payload": {
-            **payload,
-            "userEmail": user_email,
-            "environment": "production"
-        }
-    }
-    requests.post(url, json=body, timeout=3.0)
-```
+**Practices:** fire-and-forget (never block a user response on telemetry); send `itemCount: 50`
+for a bulk operation rather than 50 requests; keep payloads under 16 KB and free of PII or
+free-text notes — amounts, categories, and IDs only.
 
 ---
 
-## Step 4: Read Your Events Back
+## Step 5 — Read your events back
 
-### 🔎 Query Endpoint
-- **URL:** `GET https://monolith-postbacks.adithyakrishnan.com/api/v1/audit/logs`
-- **Header:** `Authorization: Bearer <MONOLITH_API_KEY>` — the same key you post with.
+`GET https://monolith-postbacks.adithyakrishnan.com/api/v1/audit/logs`, same bearer key.
 
 ```bash
 curl -s -G https://monolith-postbacks.adithyakrishnan.com/api/v1/audit/logs \
@@ -144,31 +170,19 @@ curl -s -G https://monolith-postbacks.adithyakrishnan.com/api/v1/audit/logs \
   --data-urlencode 'limit=100'
 ```
 
-```json
-{ "scope": "my-task-app", "count": 1,
-  "results": [
-    { "domain": "tasks", "eventId": "a7b8c9d0-…", "sourceApp": "my-task-app",
-      "userId": "usr_99182", "eventType": "TASK_COMPLETED", "action": "CREATE",
-      "entityId": "task_4412", "itemCount": 1,
-      "occurredAt": "2026-08-30T12:00:00Z", "receivedAt": "2026-08-30T12:00:01Z",
-      "payload": { "title": "Complete Monolith Integration" } } ],
-  "nextBefore": "2026-08-30T12:00:00Z" }
-```
+Returns `{ scope, count, results[], nextBefore }`, newest first. Filters: `userId`,
+`domain`, `eventType`, `from` / `before` (ISO-8601 or epoch millis), `limit` (default 50,
+max 200). Paginate by passing the previous `nextBefore` as `before`. With no `from`, only the
+last 30 days are scanned.
 
-| Param | Notes |
-| :--- | :--- |
-| `userId` | Acting user id as your app knows it. |
-| `domain` / `eventType` | Checked against the same allowlists as ingest. |
-| `from` / `before` | `occurred_at` bounds (ISO-8601 or epoch millis). No `from` &rarr; last 30 days only. |
-| `limit` | Default 50, max 200. |
-| `sourceApp` | **Not for app keys** — your results are fixed to your own app. Passing another app's id is a **403**. |
-
-Paginate by passing the previous response's `nextBefore` as `before`.
+**Isolation.** `source_app` is fixed to your key's app; `?sourceApp=<other app>` is a `403`.
+Cross-app reads need a dedicated cross-app credential.
 
 ---
 
-## 🔐 Security & Fails-Closed Policy
-- **Fails-Closed Ingestion:** Unregistered `sourceApp` or `eventType` values return HTTP **400 Bad Request** (`"unknown_source_app"` / `"unknown_event_type"`).
-- **Authentication:** Unauthenticated requests return HTTP **401 Unauthorized**.
-- **Non-Blocking Delivery:** Postbacks return HTTP **202 Accepted** immediately; BigQuery writes and Discord alerts run on async background threads.
-- **Read Isolation:** `GET /api/v1/audit/logs` fixes the `source_app` filter to the calling key's app. Cross-app reads require a dedicated cross-app credential; an app key asking for another app gets HTTP **403 Forbidden**. Reads are rate limited per key (30/min default), independently of ingest.
+## Fail-closed policy
+
+- **Unregistered `sourceApp` or `eventType` → `400`** (`unknown_source_app` / `unknown_event_type`), nothing stored.
+- **No / bad key → `401`.** Reads for another app → `403`.
+- **`202 Accepted`** on ingest: validated and queued; the BigQuery write is off the request thread, not a durability guarantee.
+- Per-IP and per-credential rate limits apply to ingest and to each read independently.

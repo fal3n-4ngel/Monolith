@@ -10,7 +10,7 @@ import java.util.Map;
 
 /**
  * Inbound domain event — "an expense was created." Deliberately no {@code table} field: the
- * destination is resolved server-side from {@code eventType} (see {@code DomainEventType}).
+ * destination is resolved server-side from {@code eventType} (see {@code AppRegistry}).
  */
 @Schema(description = "Domain event emitted by a personal application when a user record changes")
 public class DomainEventDto {
@@ -24,7 +24,7 @@ public class DomainEventDto {
     @Pattern(regexp = IDENTIFIER_PATTERN, message = "sourceApp may contain only letters, digits, '.', '-' and '_'")
     private String sourceApp;
 
-    @Schema(description = "Event name; must be one of the allowlisted DomainEventType values",
+    @Schema(description = "Event name; must be one of the names allowlisted for this app in apps.json",
             example = "EXPENSE_CREATED")
     @NotBlank(message = "eventType is required")
     @Size(max = 96, message = "eventType must be at most 96 characters")

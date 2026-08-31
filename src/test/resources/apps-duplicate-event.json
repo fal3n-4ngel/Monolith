@@ -1,0 +1,6 @@
+{
+  "apps": [
+    { "id": "app-one", "events": { "things": ["THING_CREATED"] } },
+    { "id": "app-two", "events": { "stuff": ["THING_CREATED"] } }
+  ]
+}

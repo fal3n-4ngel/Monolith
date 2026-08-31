@@ -1,0 +1,31 @@
+{
+  "_comment": "The app + domain-event allowlist. Onboarding a new app = one block here, then merge the PR: CI deploys, the per-app BigQuery tables and the all_events view self-provision on startup, and the app's API key derives from its id (see ClientKeyMap). No secrets live here. 'events' maps a domain to its event names; append ':create|update|delete' only when the name has no standard suffix. 'readback' (optional) gives the app a self-scoped read credential and lists the reports.json ids it may run.",
+  "apps": [
+    {
+      "id": "continuum-home",
+      "readback": {
+        "reports": [
+          "audit-log", "event-type-summary", "daily-volume", "user-activity", "deletions", "ingest-latency",
+          "expense-spend", "subscription-costs", "watchlist-churn", "investment-activity", "account-lifecycle"
+        ]
+      },
+      "events": {
+        "expenses": ["EXPENSE_CREATED", "EXPENSE_UPDATED", "EXPENSE_DELETED", "SALARY_UPDATED", "SALARY_LOGGED"],
+        "watchlist": ["WATCHLIST_ADDED", "WATCHLIST_UPDATED", "WATCHLIST_REMOVED"],
+        "investments": ["INVESTMENT_CREATED", "INVESTMENT_UPDATED", "INVESTMENT_DELETED"],
+        "subscriptions": ["SUBSCRIPTION_CREATED", "SUBSCRIPTION_UPDATED", "SUBSCRIPTION_DELETED"],
+        "account": ["USER_DELETED"]
+      }
+    },
+    {
+      "id": "monolith-dashboard",
+      "events": {
+        "usage": ["REPORT_RUN", "MCP_QUERY", "WORKSPACE_SIGNIN"]
+      }
+    },
+    {
+      "id": "chayakudikanpooyalo",
+      "events": {}
+    }
+  ]
+}

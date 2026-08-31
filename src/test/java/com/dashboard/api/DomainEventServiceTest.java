@@ -4,12 +4,15 @@ import com.dashboard.api.ingest.PayloadSanitizer;
 import com.dashboard.api.config.AuditProperties;
 import com.dashboard.api.dto.DomainEventDto;
 import com.dashboard.api.dto.DomainEventResponse;
+import com.dashboard.api.events.AppRegistry;
 import com.dashboard.api.events.DomainEventWriter;
 import com.dashboard.api.notify.DiscordNotifier;
 import com.dashboard.api.service.DomainEventService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.Map;
 
@@ -29,10 +32,13 @@ class DomainEventServiceTest {
     private DomainEventWriter writer;
     private DomainEventService service;
 
+    private static final AppRegistry APPS =
+            new AppRegistry(new DefaultResourceLoader(), new ObjectMapper(), "classpath:apps.json");
+
     @BeforeEach
     void setUp() {
         writer = mock(DomainEventWriter.class);
-        service = new DomainEventService(writer, new PayloadSanitizer(PROPS), mock(DiscordNotifier.class));
+        service = new DomainEventService(writer, new PayloadSanitizer(PROPS), mock(DiscordNotifier.class), APPS);
     }
 
     private static DomainEventDto event(String eventType) {

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 #
-# One-time BigQuery setup for the domain-event ingest pipeline.
+# First-time / break-glass BigQuery bootstrap for the domain-event ingest pipeline.
+#
+# Routine onboarding no longer needs this: com.dashboard.api.ingest.BigQuerySchemaProvisioner
+# creates the dataset, every {app}_{domain} table in apps.json, and rebuilds all_events on each
+# startup. Run this only to bootstrap a fresh project, or to recover if the in-app provisioner
+# is disabled (monolith.provision-bigquery=false). Keep APPS / DOMAINS below in step with
+# src/main/resources/apps.json when you do.
 #
 # Safe to re-run: every step is additive, and "already exists" is treated as success.
 #

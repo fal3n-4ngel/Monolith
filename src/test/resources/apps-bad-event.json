@@ -1,0 +1,5 @@
+{
+  "apps": [
+    { "id": "widget-app", "events": { "widgets": ["WIDGET_FROBNICATED"] } }
+  ]
+}

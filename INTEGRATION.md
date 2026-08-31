@@ -157,16 +157,18 @@ Applications emit events **server-to-server** after a write or state change succ
 
 ## 4. 🎫 Requesting Integration for New Apps & Event Types
 
-Because Monolith resolves destination tables server-side to maintain data integrity, **adding a new app or event type requires a minor backend routing addition in `monolith-api`** (`DomainEventType` enum & BigQuery DDL execution).
+The app + event allowlist is data, not code: it lives in
+[`src/main/resources/apps.json`](src/main/resources/apps.json). Onboarding is **one block in
+that file** plus a merge — no enum edit, no manual BigQuery DDL, no new secret.
 
-### How to Request Integration for a New App:
+1. **Submit a ticket** on the **[GitHub Project Board 4](https://github.com/users/fal3n-4ngel/projects/4)**
+   with the app id, its domains, and its event names.
+2. **One PR** adds the app's block to `apps.json` (and, if it needs domain-specific reports, a
+   tagged block to `reports.json`).
+3. **On merge**, CI deploys and the new revision self-provisions on boot: the
+   `{app}_{domain}` BigQuery tables are created, `all_events` is rebuilt to union them, the
+   app's API key derives from its id, and — if the block has a `readback` section — a
+   self-scoped read credential is registered.
 
-1. **Submit a Ticket:** Open an integration ticket on the official GitHub Project Board:
-   👉 **[Monolith GitHub Project Board 4](https://github.com/users/fal3n-4ngel/projects/4)**
-
-2. **Include Ticket Details:**
-   - **Source App Name:** (e.g. `my-new-app`)
-   - **Event Types:** (e.g. `PROJECT_CREATED`, `TASK_COMPLETED`)
-   - **Target Domain:** (e.g. `tasks`, `projects`)
-
-3. **Backend Onboarding:** Upon ticket approval, the server-side `DomainEventType` enum and BigQuery table `my_new_app_tasks` will be provisioned automatically, enabling instant postback ingestion.
+Full walkthrough with the JSON shape and the key-derivation formula:
+[`APP_INTEGRATION_GUIDE.md`](APP_INTEGRATION_GUIDE.md).

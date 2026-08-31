@@ -1,5 +1,6 @@
 package com.dashboard.api.security;
 
+import com.dashboard.api.events.AppRegistry;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -11,15 +12,20 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * Registered API credentials with their read scope and report allotment, from {@code clients.json}.
- * Holds no secret values: {@code keyProperty} names a Spring property, or the key is looked up by
- * {@code name} in the {@code MONOLITH_CLIENT_KEYS} secret. A bad scope, duplicate name, or missing
- * file fails startup.
+ * Registered API credentials with their read scope and report allotment.
+ *
+ * <p>Two sources: the explicit entries in {@code clients.json} (the owner key, plus any genuinely
+ * cross-app consumer), and one credential synthesized per app in {@code apps.json} that declares a
+ * {@code readback} block — self-scoped, key derived from the app id. An explicit entry scoped to an
+ * app wins over the synthesized one for that app.
+ *
+ * <p>Holds no secret values. A bad scope, duplicate name, or missing file fails startup.
  */
 @Component
 public class ClientRegistry {
@@ -41,19 +47,24 @@ public class ClientRegistry {
 
     public ClientRegistry(ResourceLoader resourceLoader,
                           ObjectMapper objectMapper,
+                          AppRegistry appRegistry,
                           @Value("${monolith.clients-file:classpath:clients.json}") String location) {
         Resource resource = resourceLoader.getResource(location);
         if (!resource.exists()) {
             throw new IllegalStateException("Client registry not found at '" + location + "'");
         }
+        List<ClientDefinition> explicit;
         try (InputStream in = resource.getInputStream()) {
             Registry parsed = objectMapper.readValue(in, Registry.class);
-            this.clients = parsed.clients() == null ? List.of() : List.copyOf(parsed.clients());
+            explicit = parsed.clients() == null ? List.of() : List.copyOf(parsed.clients());
         } catch (IOException e) {
             throw new IllegalStateException("Could not read client registry at '" + location + "'", e);
         }
-        validate();
-        log.info("[Auth] Loaded {} client(s) from '{}'", clients.size(), location);
+
+        this.clients = merge(explicit, appRegistry);
+        validate(appRegistry);
+        log.info("[Auth] Registered {} client(s): {} explicit + {} synthesized from apps.json",
+                clients.size(), explicit.size(), clients.size() - explicit.size());
     }
 
     public List<ClientDefinition> clients() {
@@ -69,7 +80,23 @@ public class ClientRegistry {
         return List.of();
     }
 
-    private void validate() {
+    private static List<ClientDefinition> merge(List<ClientDefinition> explicit, AppRegistry appRegistry) {
+        Set<String> scopedApps = new HashSet<>();
+        for (ClientDefinition client : explicit) {
+            if (client.readScope() != null) {
+                scopedApps.add(client.readScope().trim().toLowerCase(java.util.Locale.ROOT));
+            }
+        }
+        List<ClientDefinition> merged = new ArrayList<>(explicit);
+        for (AppRegistry.AppDefinition app : appRegistry.apps()) {
+            if (app.hasReadback() && !scopedApps.contains(app.id())) {
+                merged.add(new ClientDefinition(app.id(), null, app.id(), app.readbackReports()));
+            }
+        }
+        return List.copyOf(merged);
+    }
+
+    private void validate(AppRegistry appRegistry) {
         Set<String> seen = new HashSet<>();
         for (ClientDefinition client : clients) {
             if (client.name() == null || client.name().isBlank()) {
@@ -78,7 +105,7 @@ public class ClientRegistry {
             if (!seen.add(client.name())) {
                 throw new IllegalStateException("Client registry has a duplicate name: '" + client.name() + "'");
             }
-            AuthenticatedClient.fromScope(client.name(), client.readScope());
+            AuthenticatedClient.fromScope(client.name(), client.readScope(), appRegistry.appIds());
         }
     }
 }

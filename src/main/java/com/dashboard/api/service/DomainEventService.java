@@ -5,8 +5,9 @@ import com.dashboard.api.ingest.EventClock;
 import com.dashboard.api.ingest.PayloadSanitizer;
 import com.dashboard.api.dto.DomainEventDto;
 import com.dashboard.api.dto.DomainEventResponse;
-import com.dashboard.api.events.DomainEventType;
-import com.dashboard.api.events.SourceApp;
+import com.dashboard.api.events.AppRef;
+import com.dashboard.api.events.AppRegistry;
+import com.dashboard.api.events.EventRef;
 import com.dashboard.api.events.DomainEventWriter;
 import com.dashboard.api.notify.DiscordNotifier;
 import org.slf4j.Logger;
@@ -28,26 +29,29 @@ public class DomainEventService {
     private final DomainEventWriter writer;
     private final PayloadSanitizer sanitizer;
     private final DiscordNotifier discord;
+    private final AppRegistry appRegistry;
 
-    public DomainEventService(DomainEventWriter writer, PayloadSanitizer sanitizer, DiscordNotifier discord) {
+    public DomainEventService(DomainEventWriter writer, PayloadSanitizer sanitizer, DiscordNotifier discord,
+                              AppRegistry appRegistry) {
         this.writer = writer;
         this.sanitizer = sanitizer;
         this.discord = discord;
+        this.appRegistry = appRegistry;
     }
 
     public DomainEventResponse record(DomainEventDto dto) {
-        Optional<SourceApp> sourceApp = SourceApp.parse(dto.getSourceApp());
+        Optional<AppRef> sourceApp = appRegistry.resolveApp(dto.getSourceApp());
         if (sourceApp.isEmpty()) {
             log.warn("[Event] REJECTED sourceApp={} eventType={}", dto.getSourceApp(), dto.getEventType());
             return DomainEventResponse.rejected(dto.getEventType(), "unknown_source_app");
         }
 
-        Optional<DomainEventType> resolved = DomainEventType.parse(dto.getEventType());
+        Optional<EventRef> resolved = appRegistry.resolveEvent(sourceApp.get().id(), dto.getEventType());
         if (resolved.isEmpty()) {
             log.warn("[Event] REJECTED eventType={} source={}", dto.getEventType(), dto.getSourceApp());
             return DomainEventResponse.rejected(dto.getEventType(), "unknown_event_type");
         }
-        DomainEventType type = resolved.get();
+        EventRef type = resolved.get();
 
         String eventId = (dto.getEventId() != null && !dto.getEventId().isBlank())
                 ? dto.getEventId()

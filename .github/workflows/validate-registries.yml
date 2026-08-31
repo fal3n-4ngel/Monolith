@@ -1,0 +1,46 @@
+name: Validate registries
+
+# Fast, focused PR check for the data files that drive onboarding: apps.json, clients.json,
+# reports.json. The full `mvn verify` in deploy.yml is still the merge gate; this just gives a
+# crisp, early signal when a registry block is malformed or inconsistent.
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'src/main/resources/apps.json'
+      - 'src/main/resources/clients.json'
+      - 'src/main/resources/reports.json'
+      - 'src/main/java/com/dashboard/api/events/**'
+      - 'src/main/java/com/dashboard/api/security/ClientRegistry.java'
+      - 'src/main/java/com/dashboard/api/security/ClientKeyMap.java'
+      - 'src/main/java/com/dashboard/api/reports/ReportRegistry.java'
+      - 'src/test/java/com/dashboard/api/*RegistryTest.java'
+      - 'src/test/java/com/dashboard/api/RegistryConsistencyTest.java'
+      - '.github/workflows/validate-registries.yml'
+
+jobs:
+  validate:
+    name: Registry schema & consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JSON is well-formed
+        run: |
+          for f in src/main/resources/apps.json src/main/resources/clients.json src/main/resources/reports.json; do
+            python3 -c "import json,sys; json.load(open('$f'))" && echo "ok  $f"
+          done
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Registry tests
+        run: >
+          mvn -B -q test
+          -Dtest=AppRegistryTest,ClientRegistryTest,ClientKeyMapTest,ReportRegistryTest,RegistryConsistencyTest,AuthenticatedClientTest
+          -Dsurefire.failIfNoSpecifiedTests=true

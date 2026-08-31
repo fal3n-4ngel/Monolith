@@ -53,8 +53,18 @@ Add a block to [`src/main/resources/apps.json`](src/main/resources/apps.json):
 - To pin domain-specific reports to this app, add them to
   [`reports.json`](src/main/resources/reports.json) with `"tags": ["task-app"]` in the same PR.
 
-Startup validation rejects a malformed id, a duplicate or suffix-less event name, or a report
-tag that isn't a registered app — so a bad PR fails CI, not production.
+### What CI checks on the PR
+
+The **Validate registries** workflow runs on any PR touching `apps.json` / `clients.json` /
+`reports.json` (or the registry code) and fails on:
+
+- malformed JSON;
+- a bad app id, a duplicate or suffix-less event name, an event name already used by another app;
+- a report `tag` that isn't a registered app;
+- a `readback.reports` (or `clients.json` `reports`) id that doesn't exist in `reports.json`;
+- an app allotted a report tagged for a *different* app (it could never run it).
+
+The full `mvn verify` in the deploy workflow is still the merge gate; this is the fast signal.
 
 ---
 
